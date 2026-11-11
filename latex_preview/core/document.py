@@ -57,6 +57,7 @@ class BuiltDocument:
     preamble_first_line: int = 0
     preamble_line_count: int = 0
     user_text: str = ""    # extrait tel que collé (pour retrouver un symbole fautif)
+    broken: bool = False   # True si la coupure automatique (breqn) est utilisée
     notes: list[str] = field(default_factory=list)
 
     def find_token_line(self, token: str) -> int | None:
@@ -109,18 +110,36 @@ def _has_math_delimiters(text: str) -> bool:
     )
 
 
-def _wrap_math(math: str) -> str:
-    """Choisit l'environnement adapté à une expression nue."""
+def _math_env(math: str, auto_break: bool = False) -> str:
+    """Choisit l'environnement adapté à une expression nue.
+
+    Si l'utilisateur a déjà structuré l'expression (& ou \\\\), on respecte
+    ses choix ; sinon, avec auto_break, on utilise dmath* (package breqn) qui
+    coupe les lignes trop longues et aligne les suites sur le signe « = ».
+    """
     top = _strip_env_blocks(math)
-    has_amp = bool(re.search(r"(?<!\\)&", top))
-    has_newline = "\\\\" in top
-    if has_amp:
-        env = "align*"
-    elif has_newline:
-        env = "gather*"
-    else:
-        env = "equation*"
-    return f"\\begin{{{env}}}\n{math}\n\\end{{{env}}}"
+    if re.search(r"(?<!\\)&", top):
+        return "align*"
+    if "\\\\" in top:
+        return "gather*"
+    return "dmath*" if auto_break else "equation*"
+
+
+# Conversions vers breqn dans le mode « texte et formules » (sans changer
+# le nombre de lignes, pour garder la correspondance des numéros de ligne).
+_BODY_BREAK_SUBS = [
+    (re.compile(r"\\(begin|end)\{equation(\*?)\}"), r"\\\1{dmath\2}"),
+    (re.compile(r"(?<!\\)\\\["), r"\\begin{dmath*}"),
+    (re.compile(r"(?<!\\)\\\]"), r"\\end{dmath*}"),
+]
+_DOUBLE_DOLLAR_RE = re.compile(r"(?<!\\)\$\$(.+?)(?<!\\)\$\$", re.S)
+
+
+def _body_to_breqn(body: str) -> tuple[str, bool]:
+    new = _DOUBLE_DOLLAR_RE.sub(lambda m: "\\begin{dmath*}" + m.group(1) + "\\end{dmath*}", body)
+    for rx, rep in _BODY_BREAK_SUBS:
+        new = rx.sub(rep, new)
+    return new, new != body
 
 
 def classify(snippet: str) -> tuple[str, str, int]:
@@ -153,7 +172,15 @@ def build_document(
     preamble: str = DEFAULT_PREAMBLE,
     font_size: int = 11,
     text_width_cm: float = 16.0,
+    auto_break: bool = False,
+    line_width_pt: float | None = None,
 ) -> BuiltDocument:
+    """Construit le source .tex.
+
+    auto_break : coupe les équations trop longues (breqn).
+    line_width_pt : largeur de ligne imposée (p. ex. celle de la fenêtre
+    d'aperçu) ; sinon text_width_cm.
+    """
     mode, body, shift = classify(snippet)
     if mode == "full":
         return BuiltDocument(source=snippet, mode="full", body_first_line=1,
@@ -161,25 +188,32 @@ def build_document(
 
     # Page large et très haute : le contenu qui déborde reste visible,
     # et le recadrage automatique supprime ensuite le blanc.
-    margin_cm = 6.0
+    margin_pt = 170.0  # ≈ 6 cm
+    width_pt = line_width_pt if line_width_pt else text_width_cm * 72.27 / 2.54
     header = [
         f"\\documentclass[{font_size}pt]{{article}}",
-        f"\\usepackage[paperwidth={text_width_cm + 2 * margin_cm:.2f}cm,"
-        f"paperheight=200cm,textwidth={text_width_cm:.2f}cm,"
-        f"top=2cm,hmargin={margin_cm:.2f}cm]{{geometry}}",
+        f"\\usepackage[paperwidth={width_pt + 2 * margin_pt:.1f}pt,"
+        f"paperheight=200cm,textwidth={width_pt:.1f}pt,"
+        f"top=2cm,hmargin={margin_pt:.1f}pt]{{geometry}}",
         "\\pagestyle{empty}",
         "\\setlength{\\parindent}{0pt}",
     ]
     preamble_lines = preamble.rstrip("\n").splitlines()
     preamble_first = len(header) + 1
-    lines = header + preamble_lines + ["\\begin{document}"]
 
+    broken = False
     if mode == "math":
-        content = _wrap_math(body)
+        env = _math_env(body, auto_break)
+        broken = env == "dmath*"
+        content = f"\\begin{{{env}}}\n{body}\n\\end{{{env}}}"
         open_lines = 1  # ligne \begin{env}
     else:
-        content = body
+        content, broken = _body_to_breqn(body) if auto_break else (body, False)
         open_lines = 0
+
+    # breqn doit être chargé après amsmath/mathtools, donc après le préambule.
+    extra = ["\\usepackage{breqn}"] if broken else []
+    lines = header + preamble_lines + extra + ["\\begin{document}"]
 
     body_first_line = len(lines) + 1 + open_lines
     source = "\n".join(lines) + "\n" + content + "\n\\end{document}\n"
@@ -191,4 +225,5 @@ def build_document(
         preamble_first_line=preamble_first,
         preamble_line_count=len(preamble_lines),
         user_text=snippet,
+        broken=broken,
     )

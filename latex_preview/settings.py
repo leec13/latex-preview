@@ -15,6 +15,7 @@ DEFAULTS = {
     "text_width_cm": 16.0,
     "zoom": 2.0,
     "auto_refresh": True,
+    "auto_break": True,
     "png_dpi": 300,
     "png_transparent": True,
     "last_text": WELCOME,

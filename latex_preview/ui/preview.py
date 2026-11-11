@@ -17,15 +17,20 @@ def cropped_to_qimage(cropped: CroppedPdf, scale: float, transparent: bool = Fal
     return QImage(samples, w, h, stride, fmt).copy()  # copy : détache du buffer
 
 
+PADDING_PX = 18
+CROP_PADDING_PT = 6.0
+
+
 class PreviewArea(QScrollArea):
     zoomChanged = Signal(float)
+    widthChanged = Signal()
 
     def __init__(self, zoom: float = 2.0, parent=None) -> None:
         super().__init__(parent)
         self._cropped: CroppedPdf | None = None
         self._zoom = zoom
         self._label = QLabel(alignment=Qt.AlignmentFlag.AlignCenter)
-        self._label.setStyleSheet("background: white; padding: 18px;")
+        self._label.setStyleSheet(f"background: white; padding: {PADDING_PX}px;")
         self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         self._opacity = QGraphicsOpacityEffect(self._label)
         self._opacity.setOpacity(1.0)
@@ -80,10 +85,25 @@ class PreviewArea(QScrollArea):
     def fit_width(self) -> None:
         if self._cropped is None:
             return
-        avail = self.viewport().width() - 2 * 18 - 4
-        avail_h = self.viewport().height() - 2 * 18 - 4
+        avail = self.viewport().width() - 2 * PADDING_PX - 4
+        avail_h = self.viewport().height() - 2 * PADDING_PX - 4
         z = min(avail / self._cropped.width_pt, avail_h / self._cropped.height_pt)
         self.set_zoom(z)
+
+    def available_width_pt(self) -> float:
+        """Largeur de ligne (en points TeX) qui tient dans la fenêtre au zoom actuel.
+
+        On réserve toujours la place de la barre de défilement verticale, pour
+        que son apparition ne relance pas une mise en page en boucle.
+        """
+        sb = self.verticalScrollBar().sizeHint().width()
+        px = self.width() - 2 * self.frameWidth() - sb - 2 * PADDING_PX - 8
+        return max(60.0, px / self._zoom - 2 * CROP_PADDING_PT)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if event.oldSize().width() != event.size().width():
+            self.widthChanged.emit()
 
     def _rerender(self) -> None:
         if self._cropped is None:
