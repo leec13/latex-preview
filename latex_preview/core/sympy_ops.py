@@ -96,6 +96,7 @@ class Context:
     functions: set[str] = field(default_factory=set)
     atoms: dict[str, str] = field(default_factory=dict)   # latex d'origine -> nom
     positive: bool = False
+    sup_index: bool = True   # N_{A}^{2} : l'exposant fait partie du nom (indice)
 
     def atom(self, latex: str) -> str:
         latex = latex.strip()
@@ -107,6 +108,11 @@ class Context:
     def atom_latex(self) -> dict[str, str]:
         return {v: k for k, v in self.atoms.items()}
 
+    def expand(self, text: str) -> str:
+        """Remplace les symboles opaques d'un texte par leur LaTeX d'origine."""
+        back = self.atom_latex
+        return re.sub(r"\\mathit\{(Zq[a-z]+)\}", lambda m: back.get(m.group(1), m.group(0)), text)
+
 
 _GREEK = ("(alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|theta|vartheta|iota|kappa|"
           "lambda|mu|nu|xi|pi|varpi|rho|varrho|sigma|varsigma|tau|upsilon|phi|varphi|chi|psi|"
@@ -114,6 +120,72 @@ _GREEK = ("(alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|theta|vartheta|io
 _STAR_RE = re.compile(
     r"(\\[A-Za-z]+|[A-Za-z])(_\{[^{}]*\}|_[A-Za-z0-9])?"
     r"(\^(\{\s*(\*|\\star|\\ast)\s*\}|\*|\\star(?![A-Za-z])|\\ast(?![A-Za-z]))|'+)")
+_GREEK_CMD_RE = re.compile(r"\\" + _GREEK + r"(?![A-Za-z])")
+_SIMPLE_SUB_RE = re.compile(r"^(?:[A-Za-z0-9]+|\\" + _GREEK + r")$")
+
+
+_PLACEHOLDER_RE = re.compile(r"\\mathit\{Zq[a-z]+\}")
+_OPEN_RE = re.compile(r"(\\left\s*)?\\langle(?![A-Za-z])")
+_CLOSE_RE = re.compile(r"(\\right\s*)?\\rangle(?![A-Za-z])")
+
+
+def _protect_brackets(s: str, ctx: Context) -> str:
+    """`\\langle … \\rangle` (moments, espérances) → symbole opaque, imbrication comprise."""
+    out, i = [], 0
+    while i < len(s):
+        m = _OPEN_RE.match(s, i)
+        if not m:
+            out.append(s[i])
+            i += 1
+            continue
+        depth, j = 0, i
+        while j < len(s):
+            mo, mc = _OPEN_RE.match(s, j), _CLOSE_RE.match(s, j)
+            if mo:
+                depth += 1
+                j = mo.end()
+            elif mc:
+                depth -= 1
+                j = mc.end()
+                if depth == 0:
+                    break
+            else:
+                j += 1
+        if depth:
+            raise SympyLatexError("\\langle sans \\rangle correspondant.")
+        out.append(ctx.atom(s[i:j]))
+        i = j
+    return "".join(out)
+
+
+def _indexed_symbol_end(s: str, i: int, ctx: Context) -> int | None:
+    """Fin d'un symbole indicé à garder opaque (indice complexe, ou exposant
+    d'indice avec ctx.sup_index), sinon None."""
+    m = re.match(r"[A-Za-z](?![A-Za-z])|" + _GREEK_CMD_RE.pattern, s[i:])
+    if not m:
+        return None
+    j = i + m.end()
+    k = _read_subscript(s, j)
+    if k == j:
+        return None
+    sub = s[j + 1:k]
+    sub = sub[1:-1] if sub.startswith("{") else sub
+    complex_sub = not _SIMPLE_SUB_RE.match(sub.strip())
+    end = k
+    if ctx.sup_index and s[k:k + 1] == "^":
+        if s[k + 1:k + 2] == "{":
+            g = _read_group(s, k + 1)
+            if g:
+                end = g[1]
+        else:
+            m2 = re.match(r"\^([A-Za-z0-9])", s[k:])
+            if m2:
+                end = k + m2.end()
+    if complex_sub or end != k:
+        return end
+    return None
+
+
 _DERIV_START = re.compile(r"^\s*(\\mathrm\{d\}|d|\\partial)(\s|\^|\\|[A-Za-z{(]|$)")
 
 
@@ -121,6 +193,11 @@ def _protect(s: str, ctx: Context) -> str:
     """Remplace dérivées en fraction et symboles décorés par des symboles opaques."""
     out, i = [], 0
     while i < len(s):
+        m_ph = _PLACEHOLDER_RE.match(s, i)
+        if m_ph:  # symbole opaque déjà posé
+            out.append(m_ph.group(0))
+            i = m_ph.end()
+            continue
         if s.startswith(r"\frac", i) and not s[i + 5:i + 6].isalpha():
             j = i + 5
             while j < len(s) and s[j] == " ":
@@ -135,9 +212,34 @@ def _protect(s: str, ctx: Context) -> str:
                     # Opérateur seul (\frac{d}{dt} f) : laissé au parseur.
                     body = re.sub(r"^\s*(\\mathrm\{d\}|d|\\partial)(\^\{?\d+\}?)?", "", num[0]).strip()
                     if body:
-                        out.append(ctx.atom(s[i:den[1]]))
+                        out.append(ctx.atom(ctx.expand(s[i:den[1]])))
                         i = den[1]
                         continue
+                    # Forme opérateur \frac{d}{dt} X : si X est un symbole
+                    # (moment, symbole indicé…), la dérivée entière est opaque.
+                    k2 = den[1]
+                    while k2 < len(s) and s[k2] == " ":
+                        k2 += 1
+                    m_ph = re.match(r"\\mathit\{Zq[a-z]+\}", s[k2:])
+                    end_sym = k2 + m_ph.end() if m_ph else _indexed_symbol_end(s, k2, ctx)
+                    if end_sym is None:
+                        m_l = re.match(r"([A-Za-z]|\\" + _GREEK + r")(?![A-Za-z(])(?!\s*\()", s[k2:])
+                        end_sym = k2 + m_l.end() if m_l else None
+                    if end_sym is not None:
+                        out.append(ctx.atom(ctx.expand(s[i:end_sym])))
+                        i = end_sym
+                        continue
+        # Symbole à indice complexe (r_{\max,A}) ou exposant d'indice (N_{A}^{2}).
+        if i == 0 or not (s[i - 1].isalpha() or s[i - 1] == "\\"):
+            end_idx = _indexed_symbol_end(s, i, ctx)
+            if end_idx is not None:
+                # un éventuel ^* derrière fait partie du symbole
+                m_st = re.match(r"\^(\{\s*(\*|\\star)\s*\}|\*)", s[end_idx:])
+                if m_st:
+                    end_idx += m_st.end()
+                out.append(ctx.atom(s[i:end_idx]))
+                i = end_idx
+                continue
         # Symbole étoilé ou primé (équilibre N^*, dérivée N') : opaque.
         m = _STAR_RE.match(s, i)
         if m and (i == 0 or not s[i - 1].isalpha()):
@@ -216,6 +318,7 @@ def preprocess(text: str, ctx: Context) -> str:
             "Plusieurs lignes ou un alignement (\\\\, &) : sélectionnez une seule "
             "équation ou expression.")
     s = _sympy_style_calls(s, ctx)
+    s = _protect_brackets(s, ctx)
     s = _protect(s, ctx)
     return s
 
@@ -262,6 +365,10 @@ def parse(text: str, ctx: Context):
 
     expr = _evaluate_arithmetic(expr)
     funcs = ctx.functions
+    # Ce qui est dérivé (d/dt N(t)) est une fonction, même à un argument.
+    for d in expr.atoms(sp.Derivative):
+        if isinstance(d.expr, AppliedUndef):
+            funcs.add(d.expr.func.__name__)
 
     def is_fake_call(e):
         return (isinstance(e, AppliedUndef) and len(e.args) == 1
@@ -394,12 +501,13 @@ def _parse_functions(text: str) -> set[str]:
 
 
 def run_operation(text: str, op: str = "parse", var: str = "", old: str = "", new: str = "",
-                  functions: str = "f, g, h", positive: bool = False) -> dict:
+                  functions: str = "f, g, h", positive: bool = False,
+                  sup_index: bool = True) -> dict:
     """Point d'entrée « chaîne → chaîne », utilisable dans un sous-processus.
 
     Retourne {ok, latex, interpretation, symbols, error}.
     """
-    ctx = Context(functions=_parse_functions(functions), positive=positive)
+    ctx = Context(functions=_parse_functions(functions), positive=positive, sup_index=sup_index)
     try:
         expr = parse(text, ctx)
         result = {"ok": True, "interpretation": describe(expr, ctx),

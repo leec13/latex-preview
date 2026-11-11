@@ -148,6 +148,14 @@ class SympyPanel(QDockWidget):
         self.positive.setChecked(self.s.get("sympy_positive"))
         self.positive.toggled.connect(self._on_options_changed)
         form.addRow("", self.positive)
+        self.sup_index = QCheckBox("Exposant après un indice = indice")
+        self.sup_index.setToolTip(
+            "Coché : N_{A}^{2} et r_{A}^{1} sont des noms de variables (exposant = indice\n"
+            "de type, de patch…) ; une puissance s'écrit alors (N_{A}^{2})^{2}.\n"
+            "Décoché : x_{i}^{2} est le carré de x_i (convention de sympy.latex).")
+        self.sup_index.setChecked(self.s.get("sympy_sup_index"))
+        self.sup_index.toggled.connect(self._on_options_changed)
+        form.addRow("", self.sup_index)
         lay.addLayout(form)
 
         grid = QGridLayout()
@@ -235,11 +243,13 @@ class SympyPanel(QDockWidget):
         return sel
 
     def _common_kwargs(self) -> dict:
-        return {"functions": self.functions.text(), "positive": self.positive.isChecked()}
+        return {"functions": self.functions.text(), "positive": self.positive.isChecked(),
+                "sup_index": self.sup_index.isChecked()}
 
     def _on_options_changed(self) -> None:
         self.s.set("sympy_functions", self.functions.text())
         self.s.set("sympy_positive", self.positive.isChecked())
+        self.s.set("sympy_sup_index", self.sup_index.isChecked())
         self._parse_timer.start()
 
     # ------------------------------------------------------------ requêtes
