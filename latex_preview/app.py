@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import multiprocessing
 import sys
 
 from PySide6.QtWidgets import QApplication
@@ -10,6 +11,7 @@ from .ui.main_window import MainWindow
 
 
 def main() -> None:
+    multiprocessing.freeze_support()  # pour une future application .app autonome
     app = QApplication(sys.argv)
     app.setApplicationName("LaTeX Preview")
     app.setOrganizationName("LatexPreview")

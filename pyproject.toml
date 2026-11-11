@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "latex-preview"
-version = "0.2.0"
+version = "0.3.0"
 description = "Coller du LaTeX, voir le rendu, exporter en PDF/PNG."
 requires-python = ">=3.10"
-dependencies = ["PySide6>=6.6", "PyMuPDF>=1.24", "sympy>=1.12"]
+dependencies = ["PySide6>=6.6", "PyMuPDF>=1.24", "sympy>=1.12", "antlr4-python3-runtime==4.11.*"]
 
 [project.gui-scripts]
 latex-preview = "latex_preview.app:main"
