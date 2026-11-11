@@ -23,6 +23,7 @@ DEFAULTS = {
     "vertical_layout": False,
     "sympy_functions": "f, g, h",
     "sympy_positive": False,
+    "sympy_sup_index": True,
     "sympy_timeout": 20.0,
 }
 

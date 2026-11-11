@@ -63,12 +63,16 @@ Le panneau à droite modifie le LaTeX avec SymPy. Il **agit sur la sélection** 
 - **Substitution :** un champ « Remplacer » et un champ « par », tous les deux en LaTeX. Par exemple `K` → `\frac{N^*}{2}`, ou `\lambda` → `\mu + 1`. On peut aussi remplacer une dérivée entière, comme `\frac{dN}{dt}` → `0` pour chercher les équilibres.
 - **Variable :** la liste propose les symboles de l'expression, et on peut aussi taper du LaTeX.
 - **Fonctions :** dans le LaTeX, `\lambda (n-1)` peut être un produit ou un appel de fonction. Par défaut, c'est un **produit**. Les noms listés dans ce champ (`f, g, h` par défaut) sont lus comme des fonctions. `P(n,t)`, qui a plusieurs arguments, et la notation de SymPy `N{\left(t \right)}` sont toujours lus comme des fonctions.
+- **Exposant après un indice = indice** (coché par défaut) : `N_{A}^{2}` et `r_{A}^{1}` sont des noms de variables, l'exposant servant d'indice (type, patch…). Une puissance s'écrit alors `(N_{A}^{2})^{2}`. Si vous décochez, `x_{i}^{2}` est lu comme le carré de x_i, ce qui est la convention de `sympy.latex`.
 - **Symboles réels positifs :** permet des simplifications comme √(x²) → x ou ln x + ln y → ln(xy). C'est adapté aux taux, effectifs et concentrations.
 - **Annuler :** un calcul trop long s'arrête de lui-même après 20 s, ou plus tôt avec le bouton Annuler.
 
 Les éléments suivants sont gardés **tels quels** : ils sont traités comme des symboles, puis réécrits à l'identique :
 - les dérivées écrites en fraction (`\frac{\mathrm{d}N}{\mathrm{d}t}`, `\frac{\partial P(n,t)}{\partial t}`, `\frac{\partial^2 u}{\partial x^2}`) ;
-- les symboles décorés (`\bar{f}`, `\dot{x}`, `\mathbf{v}_i`, `\hat{p}`…), étoilés (`N^*`) ou primés (`x'`).
+- les symboles décorés (`\bar{f}`, `\dot{x}`, `\mathbf{v}_i`, `\hat{p}`…), étoilés (`N^*`) ou primés (`x'`) ;
+- les **moments et espérances** `\langle N_{A}^{1} N_{B}^{2} \rangle`, chacun devenant une variable ;
+- les symboles à indice composé, comme `r_{\max,A}` ;
+- les dérivées écrites sous forme d'opérateur, comme `\frac{d}{dt} \langle … \rangle`.
 
 `e^{x}` est lu comme l'exponentielle.
 

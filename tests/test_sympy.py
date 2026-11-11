@@ -68,3 +68,37 @@ def test_errors():
 def test_multiline_rejected_clearly():
     assert "Plusieurs lignes" in R(text=r"x = - \sqrt{2} \\ x = \sqrt{2}")["error"]
     assert "Plusieurs lignes" in R(text=r"a &= b")["error"]
+
+
+# --- Équations de moments (système dynamique avec migration) ---------------
+MOMENT = (pathlib.Path(__file__).parent / "moment_ordre2.tex").read_text()
+
+
+def test_moment_equation_parsed():
+    r = ok(text=MOMENT, op="parse")
+    syms = set(r["symbols"])
+    for s in (r"\langle (N_{A}^{2})^{2} \rangle", r"\langle N_{A}^{1} N_{A}^{2} \rangle",
+              r"r_{\max,A}", r"r_{A}^{1}", "K_{A}", "m",
+              r"\frac{d}{d t} \langle (N_{A}^{2})^{2} \rangle"):
+        assert s in syms, s
+    assert "**1" not in r["interpretation"]  # r_A^1 n'est pas une puissance
+
+
+def test_moment_equation_operations():
+    r = ok(text=MOMENT, op="collect", var="m")
+    assert r["latex"].startswith(r"\frac{d}{d t} \langle (N_{A}^{2})^{2} \rangle = ")
+    assert r"m \left(" in r["latex"]
+    r = ok(text=MOMENT, op="subs", old="m", new="0")
+    assert " m" not in r["latex"].replace(r"\max", "")
+    r = ok(text=MOMENT, op="subs", old=r"\langle N_{A}^{2} \rangle", new="0")
+    assert r"\langle N_{A}^{2} \rangle" not in r["latex"]
+
+
+def test_sup_index_option():
+    assert ok(text=r"x_{i}^{2}", sup_index=False)["interpretation"] == "x_{i}**2"
+    assert ok(text=r"x_{i}^{2}", sup_index=True)["symbols"] == ["x_{i}^{2}"]
+    assert ok(text=r"r_{\max,A}", sup_index=False)["symbols"] == [r"r_{\max,A}"]
+
+
+def test_operator_derivative_of_function():
+    assert ok(text=r"\frac{d}{dt} N(t) = a")["interpretation"] == "Eq(Derivative(N(t), t), a)"

@@ -1,5 +1,12 @@
 # Historique des versions
 
+## v0.3.1 — 2026-11-11
+- SymPy : moments `\langle … \rangle` lus comme des variables ; indices composés
+  (`r_{\max,A}`) ; dérivée en forme opérateur `\frac{d}{dt} X` conservée.
+- Nouvelle case « Exposant après un indice = indice » (cochée) : `r_{A}^{1}` n'est plus
+  lu comme une puissance (l'exposant disparaissait sans avertissement).
+- `\frac{d}{dt} N(t)` : N reste une fonction.
+
 ## v0.3.0 — 2026-11-11
 - Panneau SymPy (⌘K) : interprétation de l'expression, Simplifier, Développer, Factoriser,
   Réduire, Évaluer, Éléments simples, Regrouper, Dériver, Intégrer, Résoudre, Substituer.
