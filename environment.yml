@@ -1,0 +1,14 @@
+# Environnement conda de LaTeX Preview
+#   conda env create -f environment.yml
+#   conda activate latex-preview
+# TeX Live / MacTeX n'est PAS installé ici : on utilise celui du système.
+name: latex-preview
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pyside6>=6.6
+  - pymupdf>=1.24
+  - sympy>=1.12
+  - pytest
+  - pip
