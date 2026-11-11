@@ -21,6 +21,9 @@ DEFAULTS = {
     "last_text": WELCOME,
     "last_dir": "",
     "vertical_layout": False,
+    "sympy_functions": "f, g, h",
+    "sympy_positive": False,
+    "sympy_timeout": 20.0,
 }
 
 _TYPES = {k: type(v) for k, v in DEFAULTS.items()}

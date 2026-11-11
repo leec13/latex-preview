@@ -22,6 +22,7 @@ from ..settings import Settings
 from .highlighter import LatexHighlighter
 from .options_dialog import OptionsDialog
 from .preview import PreviewArea, cropped_to_qimage
+from .sympy_panel import SympyPanel
 
 DEBOUNCE_MS = 450
 
@@ -92,6 +93,9 @@ class MainWindow(QMainWindow):
         self.splitter.setChildrenCollapsible(False)
         self.setCentralWidget(self.splitter)
 
+        self.sympy_panel = SympyPanel(self.editor, self.s, self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.sympy_panel)
+
         self._build_actions()
         self._build_toolbar()
         self._build_menus()
@@ -149,9 +153,14 @@ class MainWindow(QMainWindow):
         self.a_layout.setCheckable(True)
         self.a_log = self._act("Journal de compilation…", self.show_log, "Ctrl+L")
         self.a_quit = self._act("Quitter", self.close, QKeySequence.StandardKey.Quit)
+        self.a_sympy = self.sympy_panel.toggleViewAction()
+        self.a_sympy.setText("Panneau SymPy")
+        self.a_sympy.setShortcut(QKeySequence("Ctrl+K"))
+        self.a_sympy.setToolTip("Afficher / masquer le panneau SymPy (⌘K)")
 
     def _build_toolbar(self) -> None:
         tb = QToolBar("Outils")
+        tb.setObjectName("main_toolbar")
         tb.setMovable(False)
         tb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self.addToolBar(tb)
@@ -189,6 +198,7 @@ class MainWindow(QMainWindow):
         tb.addAction(self.a_pdf)
         tb.addAction(self.a_png)
         tb.addSeparator()
+        tb.addAction(self.a_sympy)
         tb.addAction(self.a_options)
         self.a_zoom_out.setText("−")
         self.a_zoom_in.setText("+")
@@ -204,7 +214,8 @@ class MainWindow(QMainWindow):
         m.addAction(self.a_paste_replace)
         m.addAction(self.a_refresh)
         m = mb.addMenu("Affichage")
-        for a in (self.a_zoom_in, self.a_zoom_out, self.a_zoom_100, self.a_fit, None, self.a_layout, self.a_log):
+        for a in (self.a_zoom_in, self.a_zoom_out, self.a_zoom_100, self.a_fit, None, self.a_layout,
+                  self.a_sympy, self.a_log):
             m.addSeparator() if a is None else m.addAction(a)
         m = mb.addMenu("Document")
         m.addAction(self.a_options)
@@ -217,6 +228,9 @@ class MainWindow(QMainWindow):
             self.restoreGeometry(geo)
         else:
             self.resize(1200, 640)
+        ws = q.value("window_state")
+        if ws is not None:
+            self.restoreState(ws)  # position et visibilité du panneau SymPy
         st = q.value("splitter")
         if st is not None:
             self.splitter.restoreState(st)
@@ -228,6 +242,8 @@ class MainWindow(QMainWindow):
         q = self.s.raw()
         q.setValue("geometry", self.saveGeometry())
         q.setValue("splitter", self.splitter.saveState())
+        q.setValue("window_state", self.saveState())
+        self.sympy_panel.shutdown()
         self.s.set("last_text", self.editor.toPlainText())
         self.s.set("zoom", self.preview.zoom)
         if self._busy:  # une compilation tourne encore : nettoyer à la sortie

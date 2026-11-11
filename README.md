@@ -54,16 +54,25 @@ alias ltx='conda run --no-capture-output -n latex-preview latex-preview &'
 - Moteurs disponibles : pdflatex (par défaut, le plus rapide), lualatex, xelatex.
 - Le texte, le zoom, la taille de la fenêtre et les options sont conservés d'une session à l'autre.
 
-## Avec SymPy
+## Panneau SymPy (⌘K)
 
-```python
-import sympy as sp
-t = sp.symbols("t"); N = sp.Function("N")
-r, K = sp.symbols("r K", positive=True)
-print(sp.latex(sp.Eq(N(t).diff(t), r*N(t)*(1 - N(t)/K))))
-```
+Le panneau à droite modifie le LaTeX avec SymPy. Il **agit sur la sélection** s'il y en a une, sinon sur tout le texte. Le résultat remplace le texte d'origine, et **⌘Z** revient en arrière.
 
-Collez la sortie dans l'outil. Une intégration directe de SymPy dans l'interface est prévue pour une prochaine version.
+- **SymPy a compris :** affiche comment SymPy lit l'expression, en notation Python (`*` pour un produit, `**` pour une puissance). Vérifiez cette ligne avant d'appliquer une opération.
+- **Opérations :** Simplifier, Développer, Factoriser, Réduire (même dénominateur), Évaluer (calcule les ∑, ∫ et d/dx écrits). Les opérations suivantes demandent une **variable** : Éléments simples, Regrouper, Dériver, Intégrer, Résoudre. Sur une équation, l'opération s'applique à chaque membre.
+- **Substitution :** un champ « Remplacer » et un champ « par », tous les deux en LaTeX. Par exemple `K` → `\frac{N^*}{2}`, ou `\lambda` → `\mu + 1`. On peut aussi remplacer une dérivée entière, comme `\frac{dN}{dt}` → `0` pour chercher les équilibres.
+- **Variable :** la liste propose les symboles de l'expression, et on peut aussi taper du LaTeX.
+- **Fonctions :** dans le LaTeX, `\lambda (n-1)` peut être un produit ou un appel de fonction. Par défaut, c'est un **produit**. Les noms listés dans ce champ (`f, g, h` par défaut) sont lus comme des fonctions. `P(n,t)`, qui a plusieurs arguments, et la notation de SymPy `N{\left(t \right)}` sont toujours lus comme des fonctions.
+- **Symboles réels positifs :** permet des simplifications comme √(x²) → x ou ln x + ln y → ln(xy). C'est adapté aux taux, effectifs et concentrations.
+- **Annuler :** un calcul trop long s'arrête de lui-même après 20 s, ou plus tôt avec le bouton Annuler.
+
+Les éléments suivants sont gardés **tels quels** : ils sont traités comme des symboles, puis réécrits à l'identique :
+- les dérivées écrites en fraction (`\frac{\mathrm{d}N}{\mathrm{d}t}`, `\frac{\partial P(n,t)}{\partial t}`, `\frac{\partial^2 u}{\partial x^2}`) ;
+- les symboles décorés (`\bar{f}`, `\dot{x}`, `\mathbf{v}_i`, `\hat{p}`…), étoilés (`N^*`) ou primés (`x'`).
+
+`e^{x}` est lu comme l'exponentielle.
+
+**Limites :** une seule équation ou expression à la fois (pas de `align` ni de `\\`). `cases` n'est pas compris par SymPy.
 
 ## Dépannage
 
