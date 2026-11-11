@@ -12,13 +12,14 @@ from concurrent.futures import ProcessPoolExecutor
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QFontDatabase, QTextCursor
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDockWidget, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout,
-    QLabel, QLineEdit, QPlainTextEdit, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
+    QAbstractItemView, QButtonGroup, QCheckBox, QComboBox, QDockWidget, QFormLayout,
+    QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPlainTextEdit, QPushButton,
+    QRadioButton, QSizePolicy, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from ..core.sympy_ops import NEEDS_VAR, OPERATIONS, run_operation, warm_up
 
-PARSE_DEBOUNCE_MS = 600
+PARSE_DEBOUNCE_MS = 300
 
 
 class SympyRunner(QObject):
@@ -108,6 +109,7 @@ class SympyPanel(QDockWidget):
         self.runner = SympyRunner(self)
         self.runner.finished.connect(self._on_result)
         self._parse_id = 0
+        self._parse_pending = False   # une lecture est demandée pendant qu'une autre tourne
         self._op_id = 0
         self._op_target: tuple[int, int, int, bool] | None = None  # (début, fin, révision, sélection)
 
@@ -115,9 +117,21 @@ class SympyPanel(QDockWidget):
         lay = QVBoxLayout(w)
         lay.setContentsMargins(8, 6, 8, 8)
 
-        self.scope = QLabel()
-        self.scope.setStyleSheet("color:#555;")
-        lay.addWidget(self.scope)
+        srow = QHBoxLayout()
+        srow.addWidget(QLabel("Agir sur :"))
+        self.scope_all = QRadioButton("tout le texte")
+        self.scope_sel = QRadioButton("la sélection")
+        self.scope_sel.setToolTip("Seul le texte sélectionné dans l'éditeur est transformé ;\n"
+                                  "le résultat est mis entre parenthèses si c'est une somme.")
+        self.scope_all.setChecked(True)
+        grp = QButtonGroup(self)
+        grp.addButton(self.scope_all)
+        grp.addButton(self.scope_sel)
+        self.scope_all.toggled.connect(lambda _: self._parse_timer.start())
+        srow.addWidget(self.scope_all)
+        srow.addWidget(self.scope_sel)
+        srow.addStretch(1)
+        lay.addLayout(srow)
 
         lay.addWidget(QLabel("SymPy a compris :"))
         self.interp = QPlainTextEdit(readOnly=True)
@@ -186,17 +200,41 @@ class SympyPanel(QDockWidget):
             self._buttons.append(b)
         lay.addLayout(grid)
 
-        box = QGroupBox("Substitution")
-        bl = QFormLayout(box)
-        self.old = QLineEdit(placeholderText="ex. K   ou   \\lambda")
-        self.new = QLineEdit(placeholderText="ex. \\frac{N^*}{2}   ou   \\mu + 1")
-        self.old.returnPressed.connect(lambda: self.new.setFocus())
-        self.new.returnPressed.connect(lambda: self.run("subs"))
-        bl.addRow("Remplacer :", self.old)
-        bl.addRow("par :", self.new)
+        box = QGroupBox("Substitutions (simultanées)")
+        bl = QVBoxLayout(box)
+        self.table = QTableWidget(2, 2)
+        self.table.setHorizontalHeaderLabels(["Remplacer", "par"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.verticalHeader().setDefaultSectionSize(24)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setFont(mono)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.AllEditTriggers)
+        self.table.setToolTip(
+            "Une ligne par remplacement, en LaTeX. Toutes les lignes sont appliquées\n"
+            "en même temps : X→Y et Y→X échangent X et Y (XY devient YX).\n"
+            "Les remplacements s'appliquent aussi à l'intérieur des moments ⟨…⟩.")
+        self.table.setMinimumHeight(24 * 3 + 28)
+        bl.addWidget(self.table)
+        trow = QHBoxLayout()
+        b_add = QPushButton("+")
+        b_add.setToolTip("Ajouter une ligne")
+        b_add.clicked.connect(self._add_row)
+        b_del = QPushButton("−")
+        b_del.setToolTip("Supprimer la ligne sélectionnée")
+        b_del.clicked.connect(self._del_row)
+        b_swap = QPushButton("⇄ Ajouter l'inverse")
+        b_swap.setToolTip("Pour un échange : ajoute « Y → X » pour chaque « X → Y »")
+        b_swap.clicked.connect(self._add_inverse)
+        b_clear = QPushButton("Vider")
+        b_clear.clicked.connect(self._clear_table)
+        for b in (b_add, b_del, b_swap, b_clear):
+            b.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+            trow.addWidget(b)
+        trow.addStretch(1)
+        bl.addLayout(trow)
         self.subs_btn = QPushButton("Substituer")
         self.subs_btn.clicked.connect(lambda: self.run("subs"))
-        bl.addRow("", self.subs_btn)
+        bl.addWidget(self.subs_btn)
         self._buttons.append(self.subs_btn)
         lay.addWidget(box)
 
@@ -211,8 +249,7 @@ class SympyPanel(QDockWidget):
         row.addWidget(self.cancel_btn)
         lay.addLayout(row)
 
-        hint = QLabel("Agit sur la sélection s'il y en a une, sinon sur tout le texte. "
-                      "⌘Z annule le remplacement.")
+        hint = QLabel("⌘Z dans l'éditeur annule la dernière opération.")
         hint.setWordWrap(True)
         hint.setStyleSheet("color:#777; font-size:11px;")
         lay.addWidget(hint)
@@ -222,25 +259,56 @@ class SympyPanel(QDockWidget):
         self._parse_timer = QTimer(self, singleShot=True, interval=PARSE_DEBOUNCE_MS)
         self._parse_timer.timeout.connect(self._request_parse)
         self.editor.textChanged.connect(self._parse_timer.start)
-        self.editor.selectionChanged.connect(self._parse_timer.start)
+        self.editor.selectionChanged.connect(
+            lambda: self.scope_sel.isChecked() and self._parse_timer.start())
         self.visibilityChanged.connect(lambda v: v and self._parse_timer.start())
-        self._update_scope()
         self._parse_timer.start()
 
+    # ------------------------------------------------------- substitutions
+    def _add_row(self) -> None:
+        self.table.insertRow(self.table.rowCount())
+
+    def _del_row(self) -> None:
+        row = self.table.currentRow()
+        if row < 0:
+            row = self.table.rowCount() - 1
+        if row >= 0:
+            self.table.removeRow(row)
+        if self.table.rowCount() == 0:
+            self._add_row()
+
+    def _clear_table(self) -> None:
+        self.table.setRowCount(0)
+        self.table.setRowCount(2)
+
+    def _pairs(self) -> list[list[str]]:
+        pairs = []
+        for r in range(self.table.rowCount()):
+            cells = [self.table.item(r, c) for c in (0, 1)]
+            pairs.append([(c.text() if c else "") for c in cells])
+        return pairs
+
+    def _add_inverse(self) -> None:
+        pairs = [p for p in self._pairs() if p[0].strip() and p[1].strip()]
+        existing = {(a.strip(), b.strip()) for a, b in pairs}
+        inverses = [[b, a] for a, b in pairs if (b.strip(), a.strip()) not in existing]
+        rows = [p for p in self._pairs() if p[0].strip() or p[1].strip()] + inverses
+        self.table.setRowCount(max(2, len(rows)))
+        for r in range(self.table.rowCount()):
+            for c in (0, 1):
+                text = rows[r][c] if r < len(rows) else ""
+                self.table.setItem(r, c, QTableWidgetItem(text))
+
     # ------------------------------------------------------------ cible
-    def _target(self) -> tuple[str, int, int, bool]:
-        cur = self.editor.textCursor()
-        if cur.hasSelection():
-            text = cur.selection().toPlainText()
-            if text.strip():
-                return text, cur.selectionStart(), cur.selectionEnd(), True
+    def _target(self) -> tuple[str, int, int, bool] | None:
+        """(texte, début, fin, sélection ?) ; None si « sélection » sans sélection."""
+        if self.scope_sel.isChecked():
+            cur = self.editor.textCursor()
+            if not cur.hasSelection() or not cur.selection().toPlainText().strip():
+                return None
+            return cur.selection().toPlainText(), cur.selectionStart(), cur.selectionEnd(), True
         text = self.editor.toPlainText()
         return text, 0, len(text), False
-
-    def _update_scope(self) -> bool:
-        sel = self._target()[3]
-        self.scope.setText("Agit sur : <b>la sélection</b>" if sel else "Agit sur : tout le texte")
-        return sel
 
     def _common_kwargs(self) -> dict:
         return {"functions": self.functions.text(), "positive": self.positive.isChecked(),
@@ -256,15 +324,32 @@ class SympyPanel(QDockWidget):
     def _request_parse(self) -> None:
         if not self.isVisible():
             return
-        self._update_scope()
-        text = self._target()[0]
-        if not text.strip():
-            self.interp.setPlainText("")
+        if self.runner.busy:
+            # Une lecture ou un calcul tourne : on relira dès qu'il se termine,
+            # au lieu d'empiler des lectures périmées.
+            self._parse_pending = True
             return
-        self._parse_id = self.runner.submit(10, text=text, op="parse", **self._common_kwargs())
+        self._parse_pending = False
+        target = self._target()
+        if target is None:
+            self._show_info("(sélectionnez une partie de l'expression dans l'éditeur)")
+            return
+        if not target[0].strip():
+            self._show_info("")
+            return
+        self._parse_id = self.runner.submit(10, text=target[0], op="parse", **self._common_kwargs())
+
+    def _show_info(self, text: str) -> None:
+        self.interp.setStyleSheet("color:#777;")
+        self.interp.setPlainText(text)
 
     def run(self, op: str) -> None:
-        text, start, end, sel = self._target()
+        target = self._target()
+        if target is None:
+            self._set_status("« la sélection » est choisi, mais rien n'est sélectionné dans l'éditeur.",
+                             error=True)
+            return
+        text, start, end, sel = target
         if not text.strip():
             self._set_status("L'éditeur est vide.", error=True)
             return
@@ -274,9 +359,11 @@ class SympyPanel(QDockWidget):
             self.var.setFocus()
             return
         self._op_target = (start, end, self.editor.document().revision(), sel)
+        if self.runner.busy:  # une lecture en cours : elle est abandonnée
+            self.runner.cancel_all("")
         self._op_id = self.runner.submit(
             self.s.get("sympy_timeout"), text=text, op=op, var=var,
-            old=self.old.text(), new=self.new.text(), **self._common_kwargs())
+            subs=self._pairs() if op == "subs" else None, **self._common_kwargs())
         self._set_busy(True, f"{OPERATIONS[op]}…")
 
     def _set_busy(self, busy: bool, message: str = "") -> None:
@@ -292,11 +379,13 @@ class SympyPanel(QDockWidget):
 
     # ------------------------------------------------------------ résultats
     def _on_result(self, rid: int, res: dict) -> None:
-        if rid == self._parse_id:
-            self._show_parse(res)
+        if rid == self._parse_id and (res["ok"] or res["error"]):
+            self._show_parse(res)  # (une lecture abandonnée a un message vide)
         if rid == self._op_id:
             self._set_busy(False)
             self._apply_result(res)
+        if self._parse_pending and not self.runner.busy:
+            self._request_parse()
 
     def _show_parse(self, res: dict) -> None:
         if res["ok"]:
@@ -326,14 +415,22 @@ class SympyPanel(QDockWidget):
         cur = QTextCursor(doc)
         cur.setPosition(start)
         cur.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        latex = res["latex"]
+        if sel and res.get("is_sum"):
+            # Une somme insérée au milieu d'un produit doit rester groupée.
+            latex = r"\left(" + latex + r"\right)"
         cur.beginEditBlock()          # un seul ⌘Z pour annuler
-        cur.insertText(res["latex"])
+        cur.insertText(latex)
         cur.endEditBlock()
         if sel:  # garder le résultat sélectionné pour enchaîner les opérations
             cur.setPosition(start)
-            cur.setPosition(start + len(res["latex"]), QTextCursor.MoveMode.KeepAnchor)
+            cur.setPosition(start + len(latex), QTextCursor.MoveMode.KeepAnchor)
             self.editor.setTextCursor(cur)
-        self._set_status("Fait. ⌘Z pour revenir en arrière.")
+        elif res.get("result_interpretation"):
+            # Mise à jour immédiate, sans attendre la relecture du texte.
+            self.interp.setStyleSheet("")
+            self.interp.setPlainText(res["result_interpretation"])
+        self._set_status("Fait.")
 
     def shutdown(self) -> None:
         self.runner.shutdown()

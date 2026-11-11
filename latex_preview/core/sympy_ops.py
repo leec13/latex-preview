@@ -97,6 +97,8 @@ class Context:
     atoms: dict[str, str] = field(default_factory=dict)   # latex d'origine -> nom
     positive: bool = False
     sup_index: bool = True   # N_{A}^{2} : l'exposant fait partie du nom (indice)
+    moments: dict[str, object] = field(default_factory=dict)   # nom -> monôme SymPy
+    derivs: dict[str, tuple[str, str]] = field(default_factory=dict)  # nom -> (préfixe, moment)
 
     def atom(self, latex: str) -> str:
         latex = latex.strip()
@@ -107,6 +109,13 @@ class Context:
     @property
     def atom_latex(self) -> dict[str, str]:
         return {v: k for k, v in self.atoms.items()}
+
+    def symbol(self, name: str):
+        sp = _sympy()
+        return sp.Symbol(name, positive=True) if self.positive else sp.Symbol(name)
+
+    def latex_of(self, sym) -> str:
+        return self.atom_latex.get(sym.name) or _sympy().latex(sym)
 
     def expand(self, text: str) -> str:
         """Remplace les symboles opaques d'un texte par leur LaTeX d'origine."""
@@ -153,9 +162,51 @@ def _protect_brackets(s: str, ctx: Context) -> str:
                 j += 1
         if depth:
             raise SympyLatexError("\\langle sans \\rangle correspondant.")
-        out.append(ctx.atom(s[i:j]))
+        out.append(_moment_atom(s[i:j], ctx))
         i = j
     return "".join(out)
+
+
+def _moment_inner(text: str) -> str:
+    m_open, m_close = _OPEN_RE.match(text), None
+    for m in _CLOSE_RE.finditer(text):
+        m_close = m
+    return text[m_open.end():m_close.start()]
+
+
+def moment_latex(inner, ctx: Context) -> str | None:
+    """Écriture canonique d'un moment monôme : facteurs triés, (X)^{k}.
+
+    Retourne None si le contenu n'est pas un monôme de symboles."""
+    sp = _sympy()
+    if not isinstance(inner, (sp.Symbol, sp.Pow, sp.Mul)):
+        return None
+    parts = []
+    for base, exp in inner.as_powers_dict().items():
+        if not isinstance(base, sp.Symbol) or not (exp.is_Integer and exp > 0):
+            return None
+        b = ctx.latex_of(base)
+        if exp == 1:
+            parts.append((b, b))
+        else:
+            bb = f"({b})" if ("_" in b or "^" in b or " " in b) else b
+            parts.append((b, f"{bb}^{{{exp}}}"))
+    parts.sort()
+    return r"\langle " + " ".join(p for _, p in parts) + r" \rangle"
+
+
+def _moment_atom(text: str, ctx: Context) -> str:
+    """Moment → symbole opaque ; deux écritures du même monôme → même symbole."""
+    try:
+        inner = parse(_moment_inner(text), ctx)
+    except SympyLatexError:
+        inner = None
+    canon = moment_latex(inner, ctx) if inner is not None else None
+    if canon is None:
+        return ctx.atom(text)
+    ph = ctx.atom(canon)
+    ctx.moments[ph[len(r"\mathit{"):-1]] = inner
+    return ph
 
 
 def _indexed_symbol_end(s: str, i: int, ctx: Context) -> int | None:
@@ -226,7 +277,13 @@ def _protect(s: str, ctx: Context) -> str:
                         m_l = re.match(r"([A-Za-z]|\\" + _GREEK + r")(?![A-Za-z(])(?!\s*\()", s[k2:])
                         end_sym = k2 + m_l.end() if m_l else None
                     if end_sym is not None:
-                        out.append(ctx.atom(ctx.expand(s[i:end_sym])))
+                        ph = ctx.atom(ctx.expand(s[i:end_sym]))
+                        if m_ph:
+                            inner_name = m_ph.group(0)[len(r"\mathit{"):-1]
+                            if inner_name in ctx.moments:
+                                prefix = ctx.expand(s[i:k2]).rstrip()
+                                ctx.derivs[ph[len(r"\mathit{"):-1]] = (prefix, inner_name)
+                        out.append(ph)
                         i = end_sym
                         continue
         # Symbole à indice complexe (r_{\max,A}) ou exposant d'indice (N_{A}^{2}).
@@ -461,6 +518,44 @@ def _on_sides(expr, fn):
     return fn(expr)
 
 
+def substitute(expr, pairs, ctx: Context):
+    """Remplacements simultanés, propagés à l'intérieur des moments ⟨…⟩ et
+    des dérivées d⟨…⟩/dt. Échanger X ↔ Y donne bien YX (et non XX)."""
+    sp = _sympy()
+    mapping = dict(pairs)
+    if not mapping:
+        raise SympyLatexError("Ajoutez au moins un remplacement.")
+    extra = {}
+    new_moment_names = {}
+    for sym in expr.free_symbols:
+        inner = ctx.moments.get(sym.name)
+        if inner is None or sym in mapping:
+            continue
+        new_inner = inner.subs(mapping, simultaneous=True)
+        if new_inner == inner:
+            continue
+        canon = moment_latex(new_inner, ctx)
+        if canon is None:  # ex. ⟨X + 1⟩ : moment non monôme, gardé en bloc
+            canon = r"\langle " + sp.latex(new_inner, symbol_names=_symbol_names(new_inner, ctx)) + r" \rangle"
+        name = ctx.atom(canon)[len(r"\mathit{"):-1]
+        if moment_latex(new_inner, ctx) is not None:
+            ctx.moments[name] = new_inner
+        extra[sym] = ctx.symbol(name)
+        new_moment_names[sym.name] = name
+    for sym in expr.free_symbols:
+        d = ctx.derivs.get(sym.name)
+        if d is None or sym in mapping or d[1] not in new_moment_names:
+            continue
+        prefix, inner_name = d
+        new_inner_name = new_moment_names[inner_name]
+        latex = prefix + " " + ctx.atom_latex[new_inner_name]
+        name = ctx.atom(latex)[len(r"\mathit{"):-1]
+        ctx.derivs[name] = (prefix, new_inner_name)
+        extra[sym] = ctx.symbol(name)
+    mapping.update(extra)
+    return _on_sides(expr, lambda e: e.subs(mapping, simultaneous=True))
+
+
 def apply(expr, op: str, var=None, old=None, new=None):
     sp = _sympy()
     if op in NEEDS_VAR and var is None:
@@ -483,10 +578,6 @@ def apply(expr, op: str, var=None, old=None, new=None):
         return _on_sides(expr, lambda e: sp.integrate(e, var))
     if op == "doit":
         return _on_sides(expr, lambda e: e.doit())
-    if op == "subs":
-        if old is None or new is None:
-            raise SympyLatexError("Remplissez les champs « Remplacer » et « par ».")
-        return _on_sides(expr, lambda e: e.subs(old, new))
     if op == "solve":
         eq = expr if isinstance(expr, sp.Equality) else sp.Eq(expr, 0)
         sols = sp.solve(eq, var, dict=False)
@@ -502,25 +593,43 @@ def _parse_functions(text: str) -> set[str]:
 
 def run_operation(text: str, op: str = "parse", var: str = "", old: str = "", new: str = "",
                   functions: str = "f, g, h", positive: bool = False,
-                  sup_index: bool = True) -> dict:
+                  sup_index: bool = True, subs: list | None = None) -> dict:
     """Point d'entrée « chaîne → chaîne », utilisable dans un sous-processus.
 
-    Retourne {ok, latex, interpretation, symbols, error}.
+    subs : liste de couples [remplacer, par] (LaTeX), appliqués simultanément ;
+    old/new : un seul couple (raccourci).
+    Retourne {ok, latex, interpretation, result_interpretation, is_sum, symbols, error}.
     """
     ctx = Context(functions=_parse_functions(functions), positive=positive, sup_index=sup_index)
     try:
         expr = parse(text, ctx)
         result = {"ok": True, "interpretation": describe(expr, ctx),
-                  "symbols": symbols_latex(expr, ctx), "latex": "", "error": ""}
+                  "symbols": symbols_latex(expr, ctx), "latex": "", "error": "",
+                  "result_interpretation": "", "is_sum": False}
         if op == "parse":
             return result
-        v = parse(var, ctx) if var.strip() else None
-        o = parse(old, ctx) if old.strip() else None
-        n = parse(new, ctx) if new.strip() else None
-        if v is not None and not isinstance(v, _sympy().Symbol):
-            raise SympyLatexError(f"« {var} » n'est pas une variable simple.")
-        out = apply(expr, op, v, o, n)
+        sp = _sympy()
+        if op == "subs":
+            raw = [tuple(p) for p in (subs or [])]
+            if old.strip() or new.strip():
+                raw.append((old, new))
+            pairs = []
+            for k, (o, n) in enumerate(raw, 1):
+                if not o.strip() and not n.strip():
+                    continue
+                if not o.strip() or not n.strip():
+                    raise SympyLatexError(f"Remplacement n° {k} incomplet.")
+                pairs.append((parse(o, ctx), parse(n, ctx)))
+            out = substitute(expr, pairs, ctx)
+        else:
+            v = parse(var, ctx) if var.strip() else None
+            if v is not None and not isinstance(v, sp.Symbol):
+                raise SympyLatexError(f"« {var} » n'est pas une variable simple.")
+            out = apply(expr, op, v)
         result["latex"] = to_latex(out, ctx)
+        if not isinstance(out, list):
+            result["result_interpretation"] = describe(out, ctx)
+            result["is_sum"] = isinstance(out, sp.Add)
         return result
     except SympyLatexError as exc:
         return {"ok": False, "error": str(exc), "latex": "", "interpretation": "", "symbols": []}
