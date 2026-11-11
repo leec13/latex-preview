@@ -52,7 +52,9 @@ class OptionsDialog(QDialog):
         self.text_width.setSuffix(" cm")
         self.text_width.setValue(settings.get("text_width_cm"))
         self.text_width.setToolTip("Largeur de ligne : sert à centrer les équations et "
-                                   "à placer les numéros (16 cm ≈ article A4).")
+                                   "à placer les numéros (16 cm ≈ article A4).\n"
+                                   "Ignorée quand « Couper les lignes longues » est coché :\n"
+                                   "la largeur suit alors celle de la fenêtre.")
         form.addRow("Largeur du texte :", self.text_width)
 
         self.png_dpi = QSpinBox()

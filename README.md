@@ -41,6 +41,7 @@ alias ltx='conda run --no-capture-output -n latex-preview latex-preview &'
 
 ## Fonctions
 
+- **Couper les lignes longues** (coché par défaut) : une équation trop longue est coupée pour tenir dans la largeur de l'aperçu. Les lignes suivantes sont alignées sous le signe « = », et une expression sans « = » est coupée aussi. La coupure se refait quand on redimensionne la fenêtre ou qu'on zoome : on choisit la taille avec le zoom, et l'équation s'adapte à la fenêtre. Les équations déjà structurées à la main (`&`, `\\`) ne sont pas touchées. Cette fonction utilise le package `breqn`, inclus dans TeX Live et MacTeX. Si `breqn` échoue sur une expression, elle est affichée sur une ligne. Limite : une fraction dont le numérateur est à lui seul plus large que la fenêtre ne peut pas être coupée.
 - Aperçu automatique pendant la frappe. Il se décoche via **Auto** ; dans ce cas, **⌘↵** recompile.
 - Fenêtre et séparateur redimensionnables. Pour mettre l'aperçu sous l'éditeur : *Affichage → Aperçu sous l'éditeur*.
 - Zoom : **⌘ + molette**, pincement au trackpad, **⌘+ / ⌘−**, **Ajuster** (⌘9), taille réelle (⌘0).

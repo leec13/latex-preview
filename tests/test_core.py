@@ -46,5 +46,44 @@ def test_error_line():
     r = c.compile(build_document("x", preamble="\\usepackage{amsmath}\n\\undefinedmacro"))
     assert r.errors[0].zone == "préambule" and r.errors[0].line == 2, [e.describe() for e in r.errors]
 
+
+
+# --- coupure automatique (breqn) -------------------------------------------
+from latex_preview.core.pipeline import render_snippet
+
+LONG = (r"F(x,t) = \frac{a^{2} x^{2}}{b^{2} x^{2} + 2 b x + 1} + \frac{2 a r x^{3}}{K b x + K}"
+        r" - \frac{2 a r x^{2}}{b x + 1} + r^{2} x^{2} - \frac{\sigma^{3}}{x^{2} e^{\mu t} + e^{\mu t}}"
+        r" + \frac{3 \sigma^{2} x}{x^{2} e^{\mu t} + e^{\mu t}} - \frac{2 r^{2} x^{3}}{K} + \frac{r^{2} x^{4}}{K^{2}}")
+NOEQ = r"\left(x + 2 x^{2} + 3 x^{3} + 4 x^{4} + 5 x^{5} + 6 x^{6} + 7 x^{7} + 8 x^{8} + 9 x^{9} + 10 x^{10}\right)^{2}"
+
+
+def test_auto_break_fits_width():
+    c = TexCompiler()
+    for s in (LONG, NOEQ, "$$" + LONG + "$$", "Texte : \\[" + LONG + "\\]"):
+        out = render_snippet(c, s, auto_break=True, line_width_pt=220)
+        assert out.ok and out.doc.broken, [e.describe() for e in out.result.errors]
+        assert out.cropped.width_pt < 220 + 20, out.cropped.width_pt
+        assert out.cropped.height_pt > 40  # plusieurs lignes
+    one_line = render_snippet(c, LONG, auto_break=False)
+    assert one_line.cropped.width_pt > 400
+
+
+def test_auto_break_respects_user_structure():
+    from latex_preview.core.document import build_document
+    assert not build_document(BARE_AMP, auto_break=True).broken
+    assert not build_document(ALIGN, auto_break=True).broken
+    assert build_document(ODE, auto_break=True).broken  # cases dans une équation simple
+
+
+def test_auto_break_user_error_still_reported():
+    c = TexCompiler()
+    out = render_snippet(c, "a + \\fracc{1}{2}", auto_break=True, line_width_pt=200)
+    assert not out.ok
+    assert out.result.errors[0].line == 1
+
+
 if __name__ == "__main__":
-    test_classify(); test_compile_all(); test_error_line(); print("OK")
+    for name, fn in list(globals().items()):
+        if name.startswith("test_"):
+            fn()
+    print("OK")

@@ -118,6 +118,7 @@ class TexCompiler:
                    "est installé (sur macOS : /Library/TeX/texbin).")
             return CompileResult(False, None, msg, [TexError(msg)])
 
+        self._dir.mkdir(parents=True, exist_ok=True)
         tex = self._dir / f"{_JOB}.tex"
         pdf = self._dir / f"{_JOB}.pdf"
         logf = self._dir / f"{_JOB}.log"
@@ -136,6 +137,9 @@ class TexCompiler:
                                   timeout=timeout, env=env)
             out = proc.stdout.decode("utf-8", "replace")
             code = proc.returncode
+        except OSError as exc:  # dossier supprimé pendant la fermeture, etc.
+            msg = f"Impossible de lancer {engine} : {exc}"
+            return CompileResult(False, None, msg, [TexError(msg)])
         except subprocess.TimeoutExpired:
             msg = f"Compilation interrompue après {timeout:.0f} s."
             return CompileResult(False, None, msg, [TexError(msg)], time.perf_counter() - t0)

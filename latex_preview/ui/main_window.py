@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import html
 import os
 import threading
@@ -14,9 +15,9 @@ from PySide6.QtWidgets import (
     QMessageBox, QPlainTextEdit, QSplitter, QTextEdit, QToolBar, QVBoxLayout, QWidget,
 )
 
-from ..core.compiler import ENGINES, CompileResult, TexCompiler, find_engine
-from ..core.document import BuiltDocument, build_document
-from ..core.pdf_tools import CroppedPdf, crop_pdf, export_pdf, export_png
+from ..core.compiler import ENGINES, TexCompiler, find_engine
+from ..core.pdf_tools import CroppedPdf, export_pdf, export_png
+from ..core.pipeline import RenderOutcome, render_snippet
 from ..settings import Settings
 from .highlighter import LatexHighlighter
 from .options_dialog import OptionsDialog
@@ -32,14 +33,14 @@ class Job:
     engine: str
     font_size: int
     text_width_cm: float
+    auto_break: bool
+    line_width_pt: float | None
 
 
 @dataclass
 class JobOutcome:
     job: Job
-    doc: BuiltDocument
-    result: CompileResult
-    cropped: CroppedPdf | None
+    render: RenderOutcome
 
 
 class _Bridge(QObject):
@@ -65,6 +66,7 @@ class MainWindow(QMainWindow):
         self._build_editor()
         self.preview = PreviewArea(zoom=self.s.get("zoom"))
         self.preview.zoomChanged.connect(self._on_zoom_changed)
+        self.preview.widthChanged.connect(self._on_preview_width_changed)
 
         self.error_label = QLabel()
         self.error_label.setWordWrap(True)
@@ -159,6 +161,15 @@ class MainWindow(QMainWindow):
         self.auto_box.setChecked(self.s.get("auto_refresh"))
         self.auto_box.toggled.connect(lambda v: self.s.set("auto_refresh", v))
         tb.addWidget(self.auto_box)
+        self.break_box = QCheckBox("Couper les lignes longues")
+        self.break_box.setToolTip(
+            "Coupe les équations trop longues pour qu'elles tiennent dans la largeur\n"
+            "de l'aperçu, avec les lignes suivantes alignées sous le signe « = ».\n"
+            "Les expressions sans « = » sont coupées aussi. Les équations déjà\n"
+            "structurées par vous (&, \\\\) ne sont pas modifiées.")
+        self.break_box.setChecked(self.s.get("auto_break"))
+        self.break_box.toggled.connect(self._on_break_toggled)
+        tb.addWidget(self.break_box)
         self.engine_box = QComboBox()
         self.engine_box.addItems(ENGINES)
         self.engine_box.setCurrentText(self.s.get("engine"))
@@ -219,7 +230,10 @@ class MainWindow(QMainWindow):
         q.setValue("splitter", self.splitter.saveState())
         self.s.set("last_text", self.editor.toPlainText())
         self.s.set("zoom", self.preview.zoom)
-        self.compiler.cleanup()
+        if self._busy:  # une compilation tourne encore : nettoyer à la sortie
+            atexit.register(self.compiler.cleanup)
+        else:
+            self.compiler.cleanup()
         super().closeEvent(event)
 
     def _check_tex(self) -> None:
@@ -232,18 +246,35 @@ class MainWindow(QMainWindow):
 
     # ---------------------------------------------------------- compilation
     def _current_job(self) -> Job:
+        auto_break = self.break_box.isChecked()
+        width = None
+        if auto_break:
+            # Arrondi à 6 pt : évite de recompiler pour un pixel de différence.
+            width = round(self.preview.available_width_pt() / 6.0) * 6.0
         return Job(
             text=self.editor.toPlainText(),
             preamble=self.s.get("preamble"),
             engine=self.engine_box.currentText(),
             font_size=self.s.get("font_size"),
             text_width_cm=self.s.get("text_width_cm"),
+            auto_break=auto_break,
+            line_width_pt=width,
         )
 
     def _on_text_changed(self) -> None:
         self._clear_error_highlight()
         if self.auto_box.isChecked():
             self._timer.start()
+
+    def _on_break_toggled(self, checked: bool) -> None:
+        self.s.set("auto_break", checked)
+        self.refresh(force=True)
+
+    def _on_preview_width_changed(self) -> None:
+        # La fenêtre ou le zoom a changé : on remet en page (avec délai).
+        timer = getattr(self, "_timer", None)
+        if timer is not None and self.isVisible() and self.break_box.isChecked():
+            timer.start()
 
     def _on_engine_changed(self, engine: str) -> None:
         self.s.set("engine", engine)
@@ -271,15 +302,19 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Compilation…")
 
         def work():
-            doc = build_document(job.text, job.preamble, job.font_size, job.text_width_cm)
-            result = self.compiler.compile(doc, job.engine)
-            cropped = crop_pdf(result.pdf_bytes) if result.ok else None
-            self._bridge.finished.emit(JobOutcome(job, doc, result, cropped))
+            out = render_snippet(self.compiler, job.text, job.preamble, job.engine,
+                                 job.font_size, job.text_width_cm,
+                                 job.auto_break, job.line_width_pt)
+            try:
+                self._bridge.finished.emit(JobOutcome(job, out))
+            except RuntimeError:  # fenêtre déjà détruite (fermeture)
+                pass
 
         threading.Thread(target=work, daemon=True).start()
 
-    def _on_finished(self, out: JobOutcome) -> None:
+    def _on_finished(self, outcome: JobOutcome) -> None:
         self._busy = False
+        out, job = outcome.render, outcome.job
         self._last_log = out.result.log
         if out.result.ok:
             self._last_mode = out.doc.mode
@@ -287,8 +322,12 @@ class MainWindow(QMainWindow):
             self.preview.set_document(out.cropped)
             self._show_errors([])
             mode = {"math": "expression", "body": "texte et formules", "full": "document complet"}[out.doc.mode]
-            self.statusBar().showMessage(
-                f"Compilé en {out.result.duration:.2f} s · {out.job.engine} · {mode}".replace(".", ",", 1))
+            msg = f"Compilé en {out.result.duration:.2f} s".replace(".", ",") + f" · {job.engine} · {mode}"
+            if out.doc.broken:
+                msg += " · coupé à la largeur de la fenêtre"
+            if out.note:
+                msg += f" · {out.note}"
+            self.statusBar().showMessage(msg)
         else:
             self.preview.set_stale(self.preview.cropped is not None)
             self._show_errors(out.result.errors)
@@ -448,3 +487,4 @@ class MainWindow(QMainWindow):
     def _on_zoom_changed(self, z: float) -> None:
         self.zoom_label.setText(f"{z * 100:.0f} %")
         self.s.set("zoom", z)
+        self._on_preview_width_changed()  # au zoom, la largeur disponible change
