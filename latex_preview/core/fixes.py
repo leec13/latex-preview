@@ -197,23 +197,9 @@ def _left_right_candidates(text: str) -> list[Fix]:
         end = len(text.rstrip())
         if end != eol:
             out.append(Fix(_insert(text, end, " " + close), f"« {close} » ajouté à la fin"))
-        out.append(Fix(text[:unmatched.start()] + delim + text[unmatched.end():],
-                       f"« \\left{delim} » remplacé par « {delim} » (ligne {line})"))
-    elif len(rights) > len(lefts):
-        stack, extra = 0, None
-        events = sorted([(m.start(), +1, m) for m in lefts] + [(m.start(), -1, m) for m in rights])
-        for _, kind, m in events:
-            if kind > 0:
-                stack += 1
-            elif stack:
-                stack -= 1
-            elif extra is None:
-                extra = m
-        extra = extra or rights[0]
-        delim = extra.group(1)
-        out.append(Fix(text[:extra.start()] + delim + text[extra.end():],
-                       f"« \\right{delim} » sans \\left remplacé par « {delim} » "
-                       f"(ligne {_line_of(text, extra.start())})"))
+    # \right sans \left : aucune correction (validé avec l'utilisateur) — rien n'indique
+    # où placer le \left, et remplacer \right) par ) cacherait l'erreur au lieu de la
+    # corriger. Le message de TeX indique la ligne ; l'utilisateur place le \left lui-même.
     return out
 
 

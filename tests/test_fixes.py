@@ -39,8 +39,18 @@ def test_left_sans_right(tex):
     assert fix_of(tex, r"\left( \frac{N}{K}").text == r"\left( \frac{N}{K} \right)"
 
 
-def test_right_sans_left(tex):
-    assert fix_of(tex, r"a + b \right)").text == r"a + b )"
+def test_right_sans_left_pas_de_correction(tex):
+    r"""VALIDÉ (12/11) : rien n'indique où placer le \left ; remplacer \right) par ) cacherait
+    l'erreur. On la signale (avec la ligne), sans correction."""
+    out = render_snippet(tex, r"a + b \right)")
+    assert not out.ok and out.fix is None
+    e = out.result.errors[0]
+    assert e.line == 1 and "\\right sans \\left" in e.friendly
+
+
+def test_left_sans_right_pas_de_remplacement_par_parenthese(tex):
+    out = render_snippet(tex, r"\left( a + b")
+    assert out.fix.text == r"\left( a + b \right)"
 
 
 def test_commandes_mal_orthographiees(tex):

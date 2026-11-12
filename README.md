@@ -62,7 +62,8 @@ alias ltx='conda run --no-capture-output -n latex-preview latex-preview &'
 |---|---|
 | accolade non fermée (`\frac{a}{b`, `\frac{\partial{N}{\partial t}`) | `}` ajoutée au bon endroit |
 | accolade en trop | `}` supprimée |
-| `\left(` sans `\right)`, ou l'inverse | `\right)` ajouté, ou `\right)` remplacé par `)` |
+| `\left(` sans `\right)` | `\right)` ajouté en fin de ligne |
+| `\right)` sans `\left(` | **pas de correction** : l'erreur et sa ligne sont signalées, et c'est à vous de placer le `\left(` |
 | commande mal orthographiée (`\fracc`, `\lamda`, `\langel`) | la commande connue la plus proche, macros du préambule comprises |
 | double exposant `x^2^3` | `x^{2^3}` |
 | caractères Unicode collés (`α ≤ β · γ`) | `\alpha \leq \beta \cdot \gamma` |

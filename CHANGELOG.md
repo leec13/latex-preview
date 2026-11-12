@@ -6,6 +6,9 @@
   et rien n'était proposé (cas signalé par l'utilisateur).
 - Les commandes inconnues sont aussi cherchées dans le texte, pas seulement dans le journal
   de TeX. Ordre des essais : commande citée par TeX seule, puis toutes ensemble, puis les autres.
+- `\right)` sans `\left` : plus de correction proposée (elle cachait l'erreur au lieu de la
+  corriger) ; l'erreur et sa ligne restent signalées. `\left(` sans `\right` : seul l'ajout de
+  `\right)` est proposé (la piste « \left( → ( » est retirée). Décision de l'utilisateur.
 
 ## v0.6.0 — 2026-11-12
 Spécifié par exemples avec l'utilisateur avant le développement.
