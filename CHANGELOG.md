@@ -1,5 +1,12 @@
 # Historique des versions
 
+## v0.5.1 — 2026-11-12
+- Traduction : les appels de fonction (`R1(z_star1)`) sont acceptés dans les deux sens
+  (erreur « 'Symbol' object is not callable » corrigée) ; section [fonctions] du modèle.
+- `\frac{d}{dt} N_{11}` et `\frac{d}{dt} \mathrm{N11}` correctement lus ; sécurité : une
+  équation lue seulement en partie par SymPy est signalée au lieu d'être tronquée en silence.
+- Avertissements sans doublons.
+
 ## v0.5.0 — 2026-11-12
 - Le panneau SymPy est remplacé par un panneau **Traduction LaTeX ⇄ Python** (⌘K), fondé sur
   un **modèle** de correspondances (fichier .ini partageable) : n_A1, M_A1_A2, T_…, Q_…,

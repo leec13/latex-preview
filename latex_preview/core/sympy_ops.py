@@ -97,6 +97,8 @@ class Context:
     atoms: dict[str, str] = field(default_factory=dict)   # latex d'origine -> nom
     positive: bool = False
     sup_index: bool = True   # N_{A}^{2} : l'exposant fait partie du nom (indice)
+    function_latex: set[str] = field(default_factory=set)  # LaTeX normalisé des fonctions
+    call_heads: dict[str, tuple[str, bool]] = field(default_factory=dict)  # « 907 » -> (nom, \left ?)
     moments: dict[str, object] = field(default_factory=dict)   # nom -> monôme SymPy
     derivs: dict[str, tuple[str, str]] = field(default_factory=dict)  # nom -> (préfixe, moment)
 
@@ -121,6 +123,17 @@ class Context:
         if re.match(_GREEK + r"(?![A-Za-z])", sym.name) and "_" in sym.name:
             return "\\" + sym.name
         return _sympy().latex(sym)
+
+    def head_atom(self, name: str) -> str | None:
+        """Nom « F_{7} » donné à un symbole opaque suivi de (…) → son nom opaque."""
+        m = re.fullmatch(r"F_\{(\d+)\}", name)
+        head = self.call_heads.get(m.group(1)) if m else None
+        return head[0] if head else None
+
+    def head_uses_left(self, name: str) -> bool:
+        m = re.fullmatch(r"F_\{(\d+)\}", name)
+        head = self.call_heads.get(m.group(1)) if m else None
+        return bool(head and head[1])
 
     def expand(self, text: str) -> str:
         """Remplace les symboles opaques d'un texte par leur LaTeX d'origine."""
@@ -214,6 +227,29 @@ def _moment_atom(text: str, ctx: Context) -> str:
     return ph
 
 
+def _callable(ph: str, s: str, end: int, ctx: Context) -> str:
+    """Si le symbole opaque est suivi de (…), on lui donne une forme que le
+    parseur sait appeler : F_{7}(…). Fonction ou produit : tranché plus tard."""
+    m = re.match(r"\s*(\\left\s*)?\(", s[end:])
+    if m:
+        key = str(900 + len(ctx.call_heads))
+        ctx.call_heads[key] = (ph[8:-1], bool(m.group(1)))
+        return "F_{" + key + "}"
+    return ph
+
+
+def _top_level_equal(src: str) -> bool:
+    depth = 0
+    for k, c in enumerate(src):
+        if c == "{" and (k == 0 or src[k - 1] != "\\"):
+            depth += 1
+        elif c == "}" and (k == 0 or src[k - 1] != "\\"):
+            depth -= 1
+        elif c == "=" and depth == 0 and (k == 0 or src[k - 1] not in "<>!\\"):
+            return True
+    return False
+
+
 def _indexed_symbol_end(s: str, i: int, ctx: Context) -> int | None:
     """Fin d'un symbole indicé à garder opaque (indice complexe, ou exposant
     d'indice avec ctx.sup_index), sinon None."""
@@ -290,9 +326,18 @@ def _protect(s: str, ctx: Context) -> str:
                         k2 += 1
                     m_ph = re.match(r"\\mathit\{Zq[a-z]+\}", s[k2:])
                     end_sym = k2 + m_ph.end() if m_ph else _indexed_symbol_end(s, k2, ctx)
-                    if end_sym is None:
-                        m_l = re.match(r"([A-Za-z]|\\" + _GREEK + r")(?![A-Za-z(])(?!\s*\()", s[k2:])
-                        end_sym = k2 + m_l.end() if m_l else None
+                    if end_sym is None:  # \mathrm{N11}, \bar{x}… après l'opérateur
+                        m_d = re.match(r"\\(" + "|".join(_DECORATORS) + r")(?![A-Za-z])\s*", s[k2:])
+                        if m_d:
+                            g = _read_group(s, k2 + m_d.end())
+                            if g:
+                                end_sym = _read_subscript(s, g[1])
+                    if end_sym is None:  # lettre, éventuellement indicée : N_{11}, x_i
+                        m_l = re.match(r"([A-Za-z]|\\" + _GREEK + r")(?![A-Za-z])", s[k2:])
+                        if m_l:
+                            e2 = _read_subscript(s, k2 + m_l.end())
+                            if not re.match(r"\s*\(", s[e2:]):  # N(t) : laissé au parseur
+                                end_sym = e2
                     if end_sym is not None:
                         ph = ctx.atom(ctx.expand(s[i:end_sym]))
                         inner = m_ph.group(0) if m_ph else ctx.atom(s[k2:end_sym])
@@ -309,7 +354,7 @@ def _protect(s: str, ctx: Context) -> str:
                 m_st = re.match(r"\^(\{\s*(\*|\\star)\s*\}|\*)", s[end_idx:])
                 if m_st:
                     end_idx += m_st.end()
-                out.append(ctx.atom(s[i:end_idx]))
+                out.append(_callable(ctx.atom(s[i:end_idx]), s, end_idx, ctx))
                 i = end_idx
                 continue
         # Symbole étoilé ou primé (équilibre N^*, dérivée N') : opaque.
@@ -333,7 +378,7 @@ def _protect(s: str, ctx: Context) -> str:
                     i = end
                     continue
                 end = _read_subscript(s, end)
-                out.append(ctx.atom(s[i:end]))
+                out.append(_callable(ctx.atom(s[i:end]), s, end, ctx))
                 i = end
                 continue
         # Autre commande : recopiée d'un bloc (évite de traiter ses lettres).
@@ -435,6 +480,11 @@ def parse(text: str, ctx: Context):
         first = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
         raise SympyLatexError(f"SymPy n'a pas compris l'expression : {first}") from exc
 
+    # Le parseur peut s'arrêter en silence au milieu d'une expression : une
+    # équation doit donner une égalité, sinon on le signale.
+    if _top_level_equal(src) and not isinstance(expr, sp.Equality):
+        raise SympyLatexError("SymPy n'a lu qu'une partie de l'expression (avant le « = ») : "
+                              "vérifiez l'écriture autour de cet endroit.")
     expr = _evaluate_arithmetic(expr)
     funcs = ctx.functions
     # Ce qui est dérivé (d/dt N(t)) est une fonction, même à un argument.
@@ -442,13 +492,34 @@ def parse(text: str, ctx: Context):
         if isinstance(d.expr, AppliedUndef):
             funcs.add(d.expr.func.__name__)
 
+    from .model import normalize_latex
+
+    def is_declared(name: str) -> bool:
+        if name in funcs:
+            return True
+        latex = ctx.atom_latex.get(ctx.head_atom(name) or name)
+        if latex is not None:
+            # \operatorname{f}(…) : fonction ; \mathrm{R1}(z) : fonction, mais
+            # \mathrm{N11}\left(…\right) : produit.
+            if latex.startswith("\\operatorname{"):
+                return True
+            if latex.startswith("\\mathrm{") and not ctx.head_uses_left(name):
+                return True
+        else:
+            latex = ctx.latex_of(sp.Symbol(name))
+        return normalize_latex(latex) in ctx.function_latex
+
     def is_fake_call(e):
         return (isinstance(e, AppliedUndef) and len(e.args) == 1
-                and e.func.__name__ not in funcs)
+                and not is_declared(e.func.__name__))
 
     # Appels à un argument non déclarés → produits ; boucle pour les imbrications.
+    def as_product(e):
+        name = e.func.__name__
+        return sp.Symbol(ctx.head_atom(name) or name) * e.args[0]
+
     for _ in range(10):
-        new = expr.replace(is_fake_call, lambda e: sp.Symbol(e.func.__name__) * e.args[0])
+        new = expr.replace(is_fake_call, as_product)
         if new == expr:
             break
         expr = new
