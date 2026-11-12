@@ -424,6 +424,7 @@ def preprocess(text: str, ctx: Context) -> str:
     s = inner.strip()
     s = re.sub(r"(?<!\\)%.*$", "", s, flags=re.M)        # commentaires
     s = s.replace(r"\dfrac", r"\frac").replace(r"\tfrac", r"\frac")
+    s = re.sub(r"\\(approx|simeq)(?![A-Za-z])", "=", s)   # ≈ : égalité pour le calcul
     s = re.sub(r"\\left\s*\.|\\right\s*\.", " ", s)
     s = _SIZED_RE.sub("", s)
     s = _SPACING_RE.sub(" ", s)

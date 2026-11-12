@@ -54,40 +54,43 @@ alias ltx='conda run --no-capture-output -n latex-preview latex-preview &'
 - Moteurs disponibles : pdflatex (par défaut, le plus rapide), lualatex, xelatex.
 - Le texte, le zoom, la taille de la fenêtre et les options sont conservés d'une session à l'autre.
 
-## Panneau Traduction LaTeX ⇄ Python (⌘K)
+## Erreurs : corrections proposées et conseils
 
-Ce panneau fait le lien entre les équations écrites en LaTeX, par exemple transcrites depuis le tableau blanc, et vos scripts Python/SymPy. Il s'appuie sur un **modèle** : une table de correspondance exacte entre noms Python et écriture LaTeX. Il ne devine rien : tout symbole absent du modèle est **signalé** (⚠).
+**Quand le texte ne compile pas**, l'outil cherche une correction vraisemblable et **ne la propose que si le texte corrigé compile vraiment**. L'aperçu montre alors le rendu corrigé avec un **liseré orange**, et la correction est décrite sous l'aperçu. **Appliquer** modifie le texte, et ⌘Z revient en arrière. Rien ne change sans ce clic. Sans correction possible, l'aperçu garde le dernier rendu valide en grisé.
 
-**LaTeX de l'éditeur → Python** (en direct)
-- Chaque équation de l'éditeur donne une ligne de code, par exemple :
-  `\frac{d}{dt} \langle (N_{A}^{x_1})^{2} \rangle = …` → `dM_A1_A1_dt = …`
-- Les moments sont nommés comme dans `moment_closure.py` : `n_A1`, `M_A1_A2`, `T_A1_A1_A2`, `Q_…`. Les variables sont triées dans l'ordre A1, A2, B1, B2. Les écritures équivalentes donnent le même nom : `\langle N_{A}^{x_2} N_{A}^{x_1} \rangle` → `M_A1_A2`.
-- Un système (`align`, plusieurs lignes `\\`, lignes de continuation `&\quad + …`) donne une ligne par équation.
-- Options :
+| Erreur | Correction proposée |
+|---|---|
+| accolade non fermée (`\frac{a}{b`, `\frac{\partial{N}{\partial t}`) | `}` ajoutée au bon endroit |
+| accolade en trop | `}` supprimée |
+| `\left(` sans `\right)`, ou l'inverse | `\right)` ajouté, ou `\right)` remplacé par `)` |
+| commande mal orthographiée (`\fracc`, `\lamda`, `\langel`) | la commande connue la plus proche, macros du préambule comprises |
+| double exposant `x^2^3` | `x^{2^3}` |
+| caractères Unicode collés (`α ≤ β · γ`) | `\alpha \leq \beta \cdot \gamma` |
+| `$…$` dans une équation | `$` retirés |
+
+**Conseils (le texte compile, mais il y a sans doute un oubli)**, dans le bandeau bleu sous l'aperçu :
+- **`\` manquant** devant une lettre grecque ou une commande courante (`alpha`, `theta_A`, `partial`, `sum`, `int`, `prod`, `infty`, `sqrt`, `frac`, `exp`, `ln`, `log`, `sin`, `cos`…). Le bouton Appliquer ajoute les `\`.
+  - Les lettres grecques courtes, comme `mu`, `pi`, `nu`, `xi`, `phi` ou `tau`, ne sont signalées que suivies d'un indice ou d'un exposant (`mu_A`), pour ne pas confondre avec un produit voulu (m·u).
+  - Rien n'est signalé dans `\text{…}`, `\mathrm{…}` ou le texte hors formules.
+- **Parenthèses déséquilibrées** : la ligne concernée est indiquée, sans correction automatique.
+- **Caractères Unicode** qui compilent avec lualatex ou xelatex mais s'affichent mal.
+
+## Panneau Traduction LaTeX → Python (⌘K)
+
+Chaque équation de l'éditeur est traduite en une ligne de code Python, en direct, avec les noms d'un **modèle** de correspondances. Le modèle par défaut correspond à deux niches et deux phénotypes, avec les conventions de `moment_closure.py`.
+
+- Exemple : `\frac{d}{dt}\langle N_{A}^{x_1} N_{A}^{x_2}\rangle = -\frac{2}{K_A}\langle (N_{A}^{x_1})^2 N_{A}^{x_2}\rangle + m\,\langle N_{A}^{x_2} N_{B}^{x_1}\rangle` → `dM_A1_A2_dt = M_A2_B1*m - 2*T_A1_A1_A2/KA`
+  - L'ordre des termes est celui de SymPy, qui place les majuscules d'abord.
+  - Les écritures équivalentes d'un même moment donnent le même nom.
+- **Relations sans dérivée** (fermetures) : `\langle (N_{A}^{x_1})^2 N_{A}^{x_2}\rangle \approx …` → `T_A1_A1_A2 = …`. `\approx` et `\simeq` sont lus comme `=`.
+- **Systèmes** (`align`, `\\`, lignes de continuation `&\quad + …`) : une ligne par équation.
+- **Symboles hors modèle** : ils reçoivent un **nom automatique**, indiqué sous le code : `N_{1}` → `N1`, `r_{1}` → `r1`, `\delta` → `delta`, `x_{i,j}` → `xij`, `\theta_{12}` → `theta12`. Un nom déjà pris par le modèle reçoit un suffixe (`KA_2`).
+- **Fonctions** : `R_1(z)` est une fonction si `R1 = R_1` est déclaré dans la section `[fonctions]` du modèle. Sans déclaration, `\mathrm{R1}(z)`, avec une parenthèse simple, est un appel, et `\mathrm{N11}\left(…\right)` est un produit.
+- **Options** :
   - **Développer** donne le même format que `--print-eqs` ;
   - **Remplacer par les définitions** remplace par exemple `r_A1` par `rmaxA - s*(x1 - thA)**2`.
-- **Copier le Python** pour le coller dans un script.
-
-**Python → LaTeX** (vers l'éditeur)
-- Collez une sortie de script, avec une ligne par équation, par exemple `dM_A1_A2/dt = …` ou `dM_A1_A2_dt = …`, puis cliquez sur **Convertir dans l'éditeur**. Le texte de l'éditeur est remplacé, et ⌘Z revient en arrière.
-- Plusieurs équations donnent un bloc par équation, et chacune est coupée à la largeur de la fenêtre.
-- **Regrouper par moment** met chaque moment en facteur. C'est plus lisible qu'une sortie développée.
-- L'aller-retour est exact : Python → LaTeX → Python redonne la même expression. C'est vérifié par les tests sur une sortie réelle de `moment_closure.py`.
-
-**Le modèle** (bouton « Modifier le modèle… »)
-- C'est un petit fichier `.ini` lisible. Vous pouvez l'**enregistrer et le partager** avec l'équipe, et en **ouvrir** un autre pour un autre modèle.
-- Le modèle par défaut correspond à deux niches et deux phénotypes. Il contient :
-  - les variables `A1 = N_{A}^{x_1}`… ;
-  - les préfixes `n, M, T, Q` ;
-  - les paramètres `rmaxA = r_{\max,A}`, `thA = \theta_A`, `KA = K_A`, `r_A1 = r_{A}^{x_1}`… ;
-  - les définitions des `r_A1`….
-- Une même variable peut avoir plusieurs écritures, séparées par `|`. Par exemple, `N_{A}^{x_1} | N_{A}^{1}` reconnaît les deux notations, et la première sert pour l'affichage.
-- Les **fonctions** appelées avec des arguments, comme `R1(z_star1)`, se déclarent dans la section `[fonctions]`, par exemple `R1 = R_1`. Sans déclaration, la convention suivante s'applique :
-  - `\mathrm{R1}(z)`, avec une parenthèse simple, est un appel ;
-  - `\mathrm{N11}\left(…\right)` est un produit ;
-  - `\operatorname{f}(…)` est toujours une fonction.
-  Les noms hors modèle sont écrits `\mathrm{…}`, pour être relus comme un seul nom.
-- Un exposant sur un symbole du modèle est une puissance (`x_1^{2}` = x₁²). Un exposant qui fait partie d'un nom du modèle (`N_{A}^{x_1}`) est un indice.
+- **Le modèle** est un fichier `.ini` lisible, qu'on modifie avec « Modifier le modèle… ». On peut l'enregistrer, le partager et en ouvrir un autre. Une variable peut avoir plusieurs écritures, séparées par `|` (`N_{A}^{x_1} | N_{A}^{1}`), et la première sert pour l'affichage.
+- Une erreur de frappe ne produit jamais de traduction partielle : le message d'erreur s'affiche à la place du code.
 
 ## Dépannage
 
@@ -111,7 +114,8 @@ latex_preview/
     pdf_tools.py   # recadrage, rendu, export (PyMuPDF)
     pipeline.py    # chaîne complète, coupure des lignes longues
     model.py       # modèle de correspondances noms Python ⇄ LaTeX (.ini)
-    translate.py   # traduction LaTeX ⇄ Python
+    translate.py   # traduction LaTeX → Python
+    fixes.py       # corrections proposées et conseils
     sympy_ops.py   # lecture du LaTeX par SymPy (moments, indices, dérivées)
   ui/              # interface PySide6 (Qt)
   settings.py      # préférences persistantes

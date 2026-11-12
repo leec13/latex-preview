@@ -38,7 +38,7 @@ class PreviewArea(QScrollArea):
         self.setWidget(self._label)
         self.setWidgetResizable(True)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setStyleSheet("QScrollArea { background: white; border: none; }")
+        self.set_suggestion(False)
         self.show_placeholder("Collez du LaTeX dans l'éditeur.")
 
     # --- contenu ----------------------------------------------------------
@@ -46,9 +46,10 @@ class PreviewArea(QScrollArea):
     def cropped(self) -> CroppedPdf | None:
         return self._cropped
 
-    def set_document(self, cropped: CroppedPdf | None) -> None:
+    def set_document(self, cropped: CroppedPdf | None, suggestion: bool = False) -> None:
         self._cropped = cropped
         self.set_stale(False)
+        self.set_suggestion(suggestion)
         if cropped is None:
             self.show_placeholder("Rien à afficher (contenu vide).")
         else:
@@ -58,6 +59,11 @@ class PreviewArea(QScrollArea):
         self._cropped = None
         self._label.setPixmap(QPixmap())
         self._label.setText(f"<span style='color:#888; font-size:14px'>{text}</span>")
+
+    def set_suggestion(self, on: bool) -> None:
+        """Liseré orange : l'aperçu montre la correction proposée, pas le texte."""
+        border = "3px solid #f0a020" if on else "none"
+        self.setStyleSheet(f"QScrollArea {{ background: white; border: {border}; }}")
 
     def set_stale(self, stale: bool) -> None:
         """Atténue l'aperçu quand il ne correspond plus au texte (erreur)."""

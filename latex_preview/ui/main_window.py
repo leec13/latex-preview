@@ -78,11 +78,23 @@ class MainWindow(QMainWindow):
         self.error_label.linkActivated.connect(self._on_error_link)
         self.error_label.hide()
 
+        self.advice_label = QLabel()
+        self.advice_label.setWordWrap(True)
+        self.advice_label.setTextFormat(Qt.TextFormat.RichText)
+        self.advice_label.setStyleSheet(
+            "QLabel { background:#eef4fb; color:#17324d; border-top:1px solid #c5d7ea;"
+            " padding:6px 8px; font-size:12px; }")
+        self.advice_label.linkActivated.connect(self._on_advice_link)
+        self.advice_label.hide()
+        self._fix = None        # (texte d'origine, Fix) proposée
+        self._advice = None     # (texte d'origine, [Advice])
+
         right = QWidget()
         rl = QVBoxLayout(right)
         rl.setContentsMargins(0, 0, 0, 0)
         rl.setSpacing(0)
         rl.addWidget(self.preview, 1)
+        rl.addWidget(self.advice_label)
         rl.addWidget(self.error_label)
 
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -156,7 +168,7 @@ class MainWindow(QMainWindow):
         self.a_translate = self.translate_panel.toggleViewAction()
         self.a_translate.setText("Traduction")
         self.a_translate.setShortcut(QKeySequence("Ctrl+K"))
-        self.a_translate.setToolTip("Afficher / masquer le panneau Traduction LaTeX ⇄ Python (⌘K)")
+        self.a_translate.setToolTip("Afficher / masquer le panneau Traduction LaTeX → Python (⌘K)")
 
     def _build_toolbar(self) -> None:
         tb = QToolBar("Outils")
@@ -303,6 +315,7 @@ class MainWindow(QMainWindow):
             self._last_job = job
             self.preview.show_placeholder("Collez du LaTeX dans l'éditeur.")
             self._show_errors([])
+            self._show_advice("", [])
             self.statusBar().clearMessage()
             return
         if not force and job == self._last_job:
@@ -332,6 +345,8 @@ class MainWindow(QMainWindow):
         self._busy = False
         out, job = outcome.render, outcome.job
         self._last_log = out.result.log
+        self._fix = (job.text, out.fix) if out.fix else None
+        self._show_advice(job.text, out.advice or [])
         if out.result.ok:
             self._last_mode = out.doc.mode
             self._last_full_pdf = out.result.pdf_bytes
@@ -344,6 +359,11 @@ class MainWindow(QMainWindow):
             if out.note:
                 msg += f" · {out.note}"
             self.statusBar().showMessage(msg)
+        elif out.fix is not None:
+            # Aperçu de la correction proposée (liseré orange), texte inchangé.
+            self.preview.set_document(out.fix_cropped, suggestion=True)
+            self._show_errors(out.result.errors, out.fix)
+            self.statusBar().showMessage("Erreur de compilation — aperçu avec la correction proposée")
         else:
             self.preview.set_stale(self.preview.cropped is not None)
             self._show_errors(out.result.errors)
@@ -354,7 +374,7 @@ class MainWindow(QMainWindow):
                 self._start(job)
 
     # -------------------------------------------------------------- erreurs
-    def _show_errors(self, errors) -> None:
+    def _show_errors(self, errors, fix=None) -> None:
         self._clear_error_highlight()
         if not errors:
             self.error_label.hide()
@@ -370,8 +390,11 @@ class MainWindow(QMainWindow):
             else:
                 parts.append(f"{msg}{ctx}")
         more = "" if len(errors) <= 4 else f"<br>… et {len(errors) - 4} autre(s)."
-        self.error_label.setText("<br>".join(parts) + more +
-                                 " &nbsp; <a href='log'>Journal complet</a>")
+        text = "<br>".join(parts) + more + " &nbsp; <a href='log'>Journal complet</a>"
+        if fix is not None:
+            text += ("<br><span style='color:#8a5300'><b>Correction proposée</b> (aperçu à liseré orange) : "
+                     f"{html.escape(fix.description)}</span> &nbsp; <a href='applyfix'><b>Appliquer</b></a>")
+        self.error_label.setText(text)
         self.error_label.show()
         first = next((e for e in errors if e.line and e.zone == "extrait"), None)
         if first:
@@ -401,6 +424,37 @@ class MainWindow(QMainWindow):
             self.edit_options()
         elif link == "log":
             self.show_log()
+        elif link == "applyfix" and self._fix:
+            self._replace_text(*self._fix[0:1], self._fix[1].text)
+
+    def _show_advice(self, source: str, items) -> None:
+        self._advice = (source, items) if items else None
+        if not items:
+            self.advice_label.hide()
+            return
+        parts = []
+        for k, a in enumerate(items):
+            link = f" &nbsp; <a href='advice:{k}'>Appliquer</a>" if a.text else ""
+            parts.append(f"<b>Conseil :</b> {html.escape(a.message)}{link}")
+        self.advice_label.setText("<br>".join(parts))
+        self.advice_label.show()
+
+    def _on_advice_link(self, link: str) -> None:
+        if self._advice and link.startswith("advice:"):
+            source, items = self._advice
+            self._replace_text(source, items[int(link[7:])].text)
+
+    def _replace_text(self, source: str, new_text: str) -> None:
+        """Remplace tout le texte (un seul ⌘Z), si l'éditeur n'a pas changé entre-temps."""
+        if self.editor.toPlainText() != source:
+            self.statusBar().showMessage("Le texte a changé depuis la proposition : rien n'a été modifié.", 5000)
+            return
+        cur = QTextCursor(self.editor.document())
+        cur.select(QTextCursor.SelectionType.Document)
+        cur.beginEditBlock()
+        cur.insertText(new_text)
+        cur.endEditBlock()
+        self.statusBar().showMessage("Correction appliquée (⌘Z pour revenir en arrière).", 5000)
 
     def show_log(self) -> None:
         dlg = QDialog(self)

@@ -25,7 +25,6 @@ DEFAULTS = {
     "model_path": "",
     "tr_expand": False,
     "tr_defs": False,
-    "tr_collect": False,
 }
 
 _TYPES = {k: type(v) for k, v in DEFAULTS.items()}
