@@ -21,10 +21,11 @@ DEFAULTS = {
     "last_text": WELCOME,
     "last_dir": "",
     "vertical_layout": False,
-    "sympy_functions": "f, g, h",
-    "sympy_positive": False,
-    "sympy_sup_index": True,
-    "sympy_timeout": 20.0,
+    "model_text": "",
+    "model_path": "",
+    "tr_expand": False,
+    "tr_defs": False,
+    "tr_collect": False,
 }
 
 _TYPES = {k: type(v) for k, v in DEFAULTS.items()}
