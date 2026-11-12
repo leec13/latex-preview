@@ -1,5 +1,15 @@
 # Historique des versions
 
+## v0.4.0 — 2026-11-11
+- SymPy : substitutions **simultanées** (tableau de remplacements ; X↔Y donne YX),
+  propagées à l'intérieur des moments ⟨…⟩ et des dérivées d⟨…⟩/dt. Bouton « Ajouter l'inverse ».
+- Moments écrits sous forme canonique : ⟨N_A^2 N_A^1⟩ et ⟨N_A^1 N_A^2⟩ sont le même symbole.
+- Correction : sélectionner du texte dans l'éditeur ne change plus la portée sans le dire
+  (choix explicite « tout le texte / la sélection ») ; une somme insérée dans une sélection
+  est mise entre parenthèses (a·x avec x → z+1 donnait « a z + 1 »).
+- Interprétation mise à jour plus vite (300 ms, lectures périmées abandonnées, résultat
+  affiché aussitôt après une opération).
+
 ## v0.3.1 — 2026-11-11
 - SymPy : moments `\langle … \rangle` lus comme des variables ; indices composés
   (`r_{\max,A}`) ; dérivée en forme opérateur `\frac{d}{dt} X` conservée.

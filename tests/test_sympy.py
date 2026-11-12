@@ -102,3 +102,33 @@ def test_sup_index_option():
 
 def test_operator_derivative_of_function():
     assert ok(text=r"\frac{d}{dt} N(t) = a")["interpretation"] == "Eq(Derivative(N(t), t), a)"
+
+
+# --- substitutions simultanées et moments canoniques -----------------------
+def test_simultaneous_swap():
+    assert ok(text="X Y + X^2", op="subs", subs=[["X", "Y"], ["Y", "X"]])["latex"] == "X Y + Y^{2}"
+    r = ok(text="a x + b y", op="subs", subs=[["x", "z+1"], ["", ""]])  # ligne vide ignorée
+    assert r["result_interpretation"] == "a*(z + 1) + b*y" and r["is_sum"]
+    assert "incomplet" in R(text="x", op="subs", subs=[["x", ""]])["error"]
+
+
+def test_moments_canonical():
+    assert ok(text=r"\langle N_{A}^{2} N_{A}^{1} \rangle - \langle N_{A}^{1} N_{A}^{2} \rangle",
+              op="simplify")["latex"] == "0"
+    assert ok(text=r"\langle N_{A}^{2} N_{A}^{2} \rangle - \langle (N_{A}^{2})^{2} \rangle",
+              op="simplify")["latex"] == "0"
+
+
+def test_swap_inside_moments():
+    """Échange N_A^1 ↔ N_A^2 : donne l'équation de d⟨(N_A^1)²⟩/dt."""
+    r = ok(text=MOMENT, op="subs", subs=[["N_{A}^{1}", "N_{A}^{2}"], ["N_{A}^{2}", "N_{A}^{1}"]])
+    lhs, rhs = r["latex"].split(" = ", 1)
+    assert lhs == r"\frac{d}{d t} \langle (N_{A}^{1})^{2} \rangle"
+    assert r"2 \langle N_{A}^{1} N_{B}^{1} \rangle m" in rhs          # était ⟨N_A^2 N_B^1⟩
+    assert r"\langle N_{A}^{1} N_{A}^{2} \rangle" in rhs              # moment croisé inchangé
+    assert r"\langle (N_{A}^{2})^{2} \rangle" not in rhs
+    # Échanger deux fois redonne l'équation de départ.
+    back = ok(text=r["latex"], op="subs", subs=[["N_{A}^{1}", "N_{A}^{2}"], ["N_{A}^{2}", "N_{A}^{1}"]])
+    diff = ok(text=back["latex"].split(" = ", 1)[1] + " - (" + MOMENT.split("=", 1)[1] + ")",
+              op="simplify")
+    assert diff["latex"] == "0"

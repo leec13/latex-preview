@@ -56,11 +56,11 @@ alias ltx='conda run --no-capture-output -n latex-preview latex-preview &'
 
 ## Panneau SymPy (⌘K)
 
-Le panneau à droite modifie le LaTeX avec SymPy. Il **agit sur la sélection** s'il y en a une, sinon sur tout le texte. Le résultat remplace le texte d'origine, et **⌘Z** revient en arrière.
+Le panneau à droite modifie le LaTeX avec SymPy. Par défaut, il agit sur **tout le texte**. Choisissez **« la sélection »** pour ne transformer que la partie sélectionnée dans l'éditeur : si le résultat est une somme, il est alors mis entre parenthèses. Le résultat remplace le texte d'origine, et **⌘Z** dans l'éditeur revient en arrière.
 
 - **SymPy a compris :** affiche comment SymPy lit l'expression, en notation Python (`*` pour un produit, `**` pour une puissance). Vérifiez cette ligne avant d'appliquer une opération.
 - **Opérations :** Simplifier, Développer, Factoriser, Réduire (même dénominateur), Évaluer (calcule les ∑, ∫ et d/dx écrits). Les opérations suivantes demandent une **variable** : Éléments simples, Regrouper, Dériver, Intégrer, Résoudre. Sur une équation, l'opération s'applique à chaque membre.
-- **Substitution :** un champ « Remplacer » et un champ « par », tous les deux en LaTeX. Par exemple `K` → `\frac{N^*}{2}`, ou `\lambda` → `\mu + 1`. On peut aussi remplacer une dérivée entière, comme `\frac{dN}{dt}` → `0` pour chercher les équilibres.
+- **Substitutions simultanées :** un tableau avec une ligne par remplacement, et les colonnes « Remplacer » et « par », en LaTeX. Toutes les lignes sont appliquées **en même temps**. Ainsi, X → Y et Y → X **échangent** X et Y, et XY devient YX, alors que deux remplacements successifs donneraient XX. Le bouton **⇄ Ajouter l'inverse** complète un échange. Les remplacements s'appliquent aussi **à l'intérieur des moments** : échanger `N_{A}^{1}` ↔ `N_{A}^{2}` transforme l'équation de d⟨(N_A^2)²⟩/dt en celle de d⟨(N_A^1)²⟩/dt. Autres exemples : `K` → `\frac{N^*}{2}`, ou `\frac{dN}{dt}` → `0` pour chercher les équilibres.
 - **Variable :** la liste propose les symboles de l'expression, et on peut aussi taper du LaTeX.
 - **Fonctions :** dans le LaTeX, `\lambda (n-1)` peut être un produit ou un appel de fonction. Par défaut, c'est un **produit**. Les noms listés dans ce champ (`f, g, h` par défaut) sont lus comme des fonctions. `P(n,t)`, qui a plusieurs arguments, et la notation de SymPy `N{\left(t \right)}` sont toujours lus comme des fonctions.
 - **Exposant après un indice = indice** (coché par défaut) : `N_{A}^{2}` et `r_{A}^{1}` sont des noms de variables, l'exposant servant d'indice (type, patch…). Une puissance s'écrit alors `(N_{A}^{2})^{2}`. Si vous décochez, `x_{i}^{2}` est lu comme le carré de x_i, ce qui est la convention de `sympy.latex`.
@@ -70,7 +70,7 @@ Le panneau à droite modifie le LaTeX avec SymPy. Il **agit sur la sélection** 
 Les éléments suivants sont gardés **tels quels** : ils sont traités comme des symboles, puis réécrits à l'identique :
 - les dérivées écrites en fraction (`\frac{\mathrm{d}N}{\mathrm{d}t}`, `\frac{\partial P(n,t)}{\partial t}`, `\frac{\partial^2 u}{\partial x^2}`) ;
 - les symboles décorés (`\bar{f}`, `\dot{x}`, `\mathbf{v}_i`, `\hat{p}`…), étoilés (`N^*`) ou primés (`x'`) ;
-- les **moments et espérances** `\langle N_{A}^{1} N_{B}^{2} \rangle`, chacun devenant une variable ;
+- les **moments et espérances** `\langle N_{A}^{1} N_{B}^{2} \rangle`, chacun devenant une variable. Ils sont écrits sous une forme canonique, avec les facteurs triés et les puissances notées `(X)^{k}`. Ainsi, `\langle N_{A}^{2} N_{A}^{1} \rangle` et `\langle N_{A}^{1} N_{A}^{2} \rangle` sont reconnus comme le même moment ;
 - les symboles à indice composé, comme `r_{\max,A}` ;
 - les dérivées écrites sous forme d'opérateur, comme `\frac{d}{dt} \langle … \rangle`.
 
