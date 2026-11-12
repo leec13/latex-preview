@@ -119,3 +119,27 @@ def test_plusieurs_fautes_ensemble(tex):
     f = fix_of(tex, r"\fracc{1}{2} \lamda + 1 \langel x \rangle", auto_break=True, line_width_pt=300)
     assert f.text == r"\frac{1}{2} \lambda + 1 \langle x \rangle"
     assert f.description == r"Commandes corrigées : \fracc → \frac, \lamda → \lambda, \langel → \langle"
+
+
+# Journal réel de l'utilisateur (TeX Live 2026, macOS), qui ajoute un texte d'aide après l'erreur.
+LOG_TL2026 = r"""(/usr/local/texlive/2026/texmf-dist/tex/latex/amsfonts/umsb.fd
+File: umsb.fd 2013/01/14 v3.01 AMS symbols B
+)
+./preview.tex:16: Undefined control sequence.
+l.16 \lamda
+            + 1
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+"""
+
+
+def test_journal_texlive_2026():
+    from latex_preview.core.compiler import parse_errors
+    from latex_preview.core.document import build_document
+    from latex_preview.core.fixes import candidates
+    errs = parse_errors(LOG_TL2026, build_document(r"\lamda + 1", auto_break=True, line_width_pt=300))
+    assert [(e.message, e.line, e.context) for e in errs] == [("Undefined control sequence.", 1, r"\lamda")]
+    assert candidates(r"\lamda + 1", errs)[0].text == r"\lambda + 1"
