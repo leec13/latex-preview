@@ -11,7 +11,10 @@ from dataclasses import dataclass
 
 from .compiler import CompileResult, TexCompiler
 from .document import BuiltDocument, DEFAULT_PREAMBLE, build_document
+from .fixes import Advice, Fix, advice, candidates
 from .pdf_tools import CroppedPdf, crop_pdf
+
+MAX_FIX_TRIES = 4   # compilations d'essai au plus (≈ 0,2 s chacune)
 
 
 @dataclass
@@ -20,6 +23,9 @@ class RenderOutcome:
     result: CompileResult
     cropped: CroppedPdf | None
     note: str = ""          # information à afficher (repli, etc.)
+    fix: Fix | None = None              # correction qui compile (si échec)
+    fix_cropped: CroppedPdf | None = None
+    advice: list[Advice] | None = None  # conseils non bloquants (si succès)
 
     @property
     def ok(self) -> bool:
@@ -35,7 +41,25 @@ def render_snippet(
     text_width_cm: float = 16.0,
     auto_break: bool = False,
     line_width_pt: float | None = None,
+    suggest: bool = True,
 ) -> RenderOutcome:
+    args = (compiler, text, preamble, engine, font_size, text_width_cm, auto_break, line_width_pt)
+    out = _render(*args)
+    if not suggest:
+        return out
+    if out.ok:
+        out.advice = advice(text, out.doc.mode)
+        return out
+    for cand in candidates(text, out.result.errors, preamble)[:MAX_FIX_TRIES]:
+        trial = _render(compiler, cand.text, *args[2:])
+        if trial.ok:
+            out.fix, out.fix_cropped = cand, trial.cropped
+            break
+    return out
+
+
+def _render(compiler, text, preamble, engine, font_size, text_width_cm, auto_break,
+            line_width_pt) -> RenderOutcome:
     doc = build_document(text, preamble, font_size, text_width_cm, auto_break, line_width_pt)
     result = compiler.compile(doc, engine)
     note = ""

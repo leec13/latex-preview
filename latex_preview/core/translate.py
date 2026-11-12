@@ -1,10 +1,8 @@
-"""Traduction LaTeX ⇄ Python selon un modèle (voir model.py).
+"""Traduction LaTeX → Python selon un modèle (voir model.py).
 
-* LaTeX → Python : une ligne de code par équation, avec les noms du modèle
-  (n_A1, M_A1_A2, T_…, rmaxA, KA, r_A1…). Ce qui n'est pas dans le modèle est
-  signalé, jamais deviné en silence.
-* Python → LaTeX : une sortie de script (« dM_A1_A1/dt = -2*M_A1_A1*m + … »)
-  redevient du LaTeX avec la vraie notation, prêt pour l'aperçu.
+Une ligne de code par équation, avec les noms du modèle (n_A1, M_A1_A2, T_…,
+rmaxA, KA, r_A1…). Les symboles hors modèle reçoivent un nom automatique
+(N_{1} → N1), indiqué à l'utilisateur.
 
 Fonctions « chaîne → dict », utilisables dans un sous-processus.
 """
@@ -30,6 +28,7 @@ def split_equations(text: str) -> list[str]:
     t = _FENCE_RE.sub("", text)
     t = re.sub(r"(?<!\\)%.*$", "", t, flags=re.M)
     t = re.sub(r"\\(label|tag)\{[^}]*\}|\\nonumber|\\notag", "", t)
+    t = re.sub(r"\\(approx|simeq)(?![A-Za-z])", "=", t)
     t = _ENV_RE.sub("\n\n", t)
     t = re.sub(r"\$\$|\\\[|\\\]", "\n\n", t)
     t = re.sub(r"(?<!\\)&", " ", t)
@@ -47,15 +46,40 @@ def split_equations(text: str) -> list[str]:
     return pieces
 
 
-def _sanitize(latex: str) -> str:
-    """Identifiant Python lisible pour un symbole hors modèle (signalé)."""
-    s = re.sub(r"\\(?:mathrm|mathit|operatorname|text)\{([^{}]*)\}", r"\1", latex)
-    s = re.sub(r"\\(max|min|langle|rangle|left|right)", r"\1", s)
+def auto_name(latex: str) -> str:
+    """Nom Python automatique pour un symbole hors modèle (validé avec l'utilisateur) :
+    N_{1} → N1, r_{1} → r1, \\delta → delta, x_{i,j} → xij, \\theta_{12} → theta12."""
+    s = re.sub(r"\\(?:mathrm|mathit|operatorname|text|mathbf|bm|boldsymbol)\{([^{}]*)\}", r"\1", latex)
+    s = re.sub(r"\^\{?\s*(\*|\\star|\\ast)\s*\}?", "star", s)
+    s = s.replace("'", "prime")
+    s = re.sub(r"\\(left|right)(?![A-Za-z])", "", s)
     s = re.sub(r"\\([A-Za-z]+)", r"\1", s)
-    s = re.sub(r"[^A-Za-z0-9]+", "_", s).strip("_")
+    s = re.sub(r"[^A-Za-z0-9]+", "", s)
     if not s or s[0].isdigit():
-        s = "v_" + s
+        s = "v" + s
     return s
+
+
+class AutoNamer:
+    """Attribue les noms automatiques, sans collision avec le modèle ni entre eux."""
+
+    def __init__(self, model: Model) -> None:
+        self.by_latex: dict[str, str] = {}
+        self.used = set(model.param_latex) | set(model.function_latex) | set(model.var_python)
+        self.report: list[str] = []
+
+    def name(self, latex: str, kind: str = "") -> str:
+        key = latex.strip()
+        if key in self.by_latex:
+            return self.by_latex[key]
+        base = auto_name(key)
+        name, k = base, 2
+        while name in self.used:
+            name, k = f"{base}_{k}", k + 1
+        self.used.add(name)
+        self.by_latex[key] = name
+        self.report.append(f"{key} → {name}" + (f" ({kind})" if kind else ""))
+        return name
 
 
 def _model(model_text: str) -> Model:
@@ -63,7 +87,7 @@ def _model(model_text: str) -> Model:
 
 
 # ===================================================================== LaTeX → Python
-def _python_names(expr, ctx: Context, model: Model, unknown: list[str]) -> dict:
+def _python_names(expr, ctx: Context, model: Model, namer: AutoNamer) -> dict:
     """Symboles de l'expression (opaques ou non) → Symbol(nom Python du modèle)."""
     import sympy as sp
 
@@ -82,8 +106,7 @@ def _python_names(expr, ctx: Context, model: Model, unknown: list[str]) -> dict:
             target = ctx.symbol(d[1])
             name = symbol_name(target)
             if name is None:  # dérivée d'un symbole hors modèle : dX_dt quand même
-                unknown.append(ctx.latex_of(target))
-                name = _sanitize(ctx.latex_of(target))
+                name = namer.name(ctx.latex_of(target))
             return model.derivative_name(name)
         latex = ctx.latex_of(sym)
         code = model.var_of_latex(latex)
@@ -106,12 +129,11 @@ def _python_names(expr, ctx: Context, model: Model, unknown: list[str]) -> dict:
             if base:
                 repl[sym] = sp.Symbol(base) ** int(m.group(2))
                 continue
-        repl[sym] = sp.Symbol(_sanitize(latex))
-        unknown.append(latex)
+        repl[sym] = sp.Symbol(namer.name(latex))
     return repl
 
 
-def _rename_functions(expr, ctx: Context, model: Model, unknown: list[str]):
+def _rename_functions(expr, ctx: Context, model: Model, namer: AutoNamer):
     """R_{1}(z) → R1(z) selon la section [fonctions] du modèle."""
     import sympy as sp
     from sympy.core.function import AppliedUndef
@@ -125,8 +147,7 @@ def _rename_functions(expr, ctx: Context, model: Model, unknown: list[str]):
         latex = ctx.atom_latex.get(head or name) or ctx.latex_of(sp.Symbol(name))
         py = model.function_of_latex(latex)
         if py is None:
-            py = _sanitize(latex)
-            unknown.append(latex + " (fonction)")
+            py = namer.name(latex, "fonction")
         names[name] = py
     if not names:
         return expr
@@ -151,7 +172,7 @@ def _definitions(model: Model) -> dict:
 
 def latex_to_python(text: str, model_text: str, expand: bool = False,
                     use_definitions: bool = False) -> dict:
-    """Retourne {ok, python, warnings, error, count}."""
+    """Retourne {ok, python, auto_names, warnings, error, count}."""
     import sympy as sp
     from sympy.core.function import AppliedUndef
 
@@ -159,18 +180,18 @@ def latex_to_python(text: str, model_text: str, expand: bool = False,
         model = _model(model_text)
         defs = _definitions(model) if use_definitions else {}
         lines, warnings = [], []
+        namer = AutoNamer(model)
         pieces = split_equations(text)
         if not pieces:
-            return {"ok": True, "python": "", "warnings": [], "error": "", "count": 0}
+            return {"ok": True, "python": "", "auto_names": [], "warnings": [], "error": "", "count": 0}
         for k, piece in enumerate(pieces, 1):
             ctx = Context(sup_index=True, function_latex=model.function_latex_keys)
             try:
                 expr = parse(piece, ctx)
             except SympyLatexError as exc:
                 raise SympyLatexError(f"Équation {k} : {exc}" if len(pieces) > 1 else str(exc)) from exc
-            unknown: list[str] = []
-            expr = expr.xreplace(_python_names(expr, ctx, model, unknown))
-            expr = _rename_functions(expr, ctx, model, unknown)
+            expr = expr.xreplace(_python_names(expr, ctx, model, namer))
+            expr = _rename_functions(expr, ctx, model, namer)
             # d/dt N(t) écrit avec une fonction : dN_dt
             expr = expr.replace(
                 lambda e: (isinstance(e, sp.Derivative) and isinstance(e.expr, AppliedUndef)
@@ -178,10 +199,6 @@ def latex_to_python(text: str, model_text: str, expand: bool = False,
                 lambda e: sp.Symbol(model.derivative_name(e.expr.func.__name__)))
             if defs:
                 expr = expr.xreplace(defs)
-            for u in unknown:
-                msg = f"« {u} » n'est pas dans le modèle"
-                if msg not in warnings:
-                    warnings.append(msg)
             if isinstance(expr, sp.Equality):
                 lhs, rhs = expr.lhs, expr.rhs
                 if expand:
@@ -192,134 +209,13 @@ def latex_to_python(text: str, model_text: str, expand: bool = False,
                 lines.append(f"{left} = {sp.sstr(rhs)}")
             else:
                 lines.append(sp.sstr(sp.expand(expr) if expand else expr))
-        return {"ok": True, "python": "\n".join(lines), "warnings": list(dict.fromkeys(warnings)),
+        return {"ok": True, "python": "\n".join(lines), "auto_names": namer.report,
+                "warnings": list(dict.fromkeys(warnings)),
                 "error": "", "count": len(lines)}
     except (SympyLatexError, ModelError) as exc:
-        return {"ok": False, "python": "", "warnings": [], "error": str(exc), "count": 0}
+        return {"ok": False, "python": "", "auto_names": [], "warnings": [], "error": str(exc), "count": 0}
     except Exception as exc:
-        return {"ok": False, "python": "", "warnings": [],
-                "error": f"Erreur ({type(exc).__name__}) : {exc}", "count": 0}
-
-
-# ===================================================================== Python → LaTeX
-def _split_assignment(line: str) -> tuple[str | None, str]:
-    m = re.match(r"^\s*([^=<>!]+?)\s*=(?!=)\s*(.+)$", line)
-    if m:
-        return m.group(1), m.group(2)
-    return None, line
-
-
-def _latex_name(name: str, model: Model) -> tuple[str, bool]:
-    """(LaTeX, connu ?) pour un nom Python."""
-    codes = model.parse_moment_name(name)
-    if codes is not None:
-        return model.moment_latex(codes), True
-    if name in model.param_latex:
-        return model.param_latex[name], True
-    if name in model.var_python:
-        return model.var_latex[model.var_python[name]], True
-    if name in model.function_latex:
-        return model.function_latex[name], True
-    return "", False
-
-
-def _unknown_latex(name: str) -> str:
-    """Nom hors modèle : \\mathrm{…} s'il a plusieurs lettres (relu comme un seul nom)."""
-    import sympy as sp
-    plain = sp.latex(sp.Symbol(name))
-    if len(name) > 1 and not plain.startswith("\\"):
-        return r"\mathrm{" + name.replace("_", r"\_") + "}"
-    return plain
-
-
-def _printer(names: dict, model: Model, warnings: list[str]):
-    """LaTeX avec les noms du modèle, y compris pour les fonctions R1(z) → R_1\\left(z\\right)."""
-    from sympy.core.function import AppliedUndef
-    from sympy.printing.latex import LatexPrinter
-
-    class Printer(LatexPrinter):
-        def _print_Function(self, expr, exp=None):
-            if isinstance(expr, AppliedUndef):
-                name = expr.func.__name__
-                head = model.function_latex.get(name) or model.param_latex.get(name)
-                if head is None:
-                    msg = f"« {name} » (fonction) n'est pas dans le modèle"
-                    if msg not in warnings:
-                        warnings.append(msg)
-                    head = _unknown_latex(name)
-                args = ", ".join(self._print(a) for a in expr.args)
-                if name in model.function_latex:
-                    out = head + r"\left(" + args + r"\right)"
-                else:  # hors modèle : parenthèses simples = appel (\left( = produit)
-                    out = head + "(" + args + ")"
-                return out if exp is None else r"\left(" + out + r"\right)^{" + exp + "}"
-            return super()._print_Function(expr, exp)
-
-    return Printer({"symbol_names": names})
-
-
-def python_to_latex(text: str, model_text: str, collect: bool = False) -> dict:
-    """Retourne {ok, latex, warnings, error, count}."""
-    import sympy as sp
-    from sympy.parsing.sympy_parser import parse_expr
-
-    try:
-        model = _model(model_text)
-        out, warnings = [], []
-        lines = [l for l in text.splitlines() if l.strip() and not l.strip().startswith("#")]
-        for k, line in enumerate(lines, 1):
-            lhs_txt, rhs_txt = _split_assignment(line.replace("^", "**"))
-            ids = set(re.findall(r"[A-Za-z_]\w*", rhs_txt)) - _SAFE_FUNCS
-            calls = set(re.findall(r"([A-Za-z_]\w*)\s*\(", rhs_txt)) - _SAFE_FUNCS
-            local = {i: (sp.Function(i) if i in calls else sp.Symbol(i)) for i in ids}
-            try:
-                rhs = parse_expr(rhs_txt, local_dict=local, evaluate=True)
-            except Exception as exc:
-                raise ModelError(f"Ligne {k} illisible pour Python : {exc}") from exc
-
-            names = {}
-            moments = []
-            for sym in rhs.free_symbols:
-                latex, known = _latex_name(sym.name, model)
-                if not known:
-                    msg = f"« {sym.name} » n'est pas dans le modèle"
-                    if msg not in warnings:
-                        warnings.append(msg)
-                    # Nom de plusieurs lettres : \mathrm{…} pour qu'il ne soit pas
-                    # relu comme un produit de lettres.
-                    names[sym] = _unknown_latex(sym.name)
-                    continue
-                names[sym] = latex
-                if model.parse_moment_name(sym.name):
-                    moments.append(sym)
-            if collect and moments:
-                order = sorted(moments, key=lambda s: (len(model.parse_moment_name(s.name)),
-                                                       [model.var_order[c] for c in model.parse_moment_name(s.name)]))
-                rhs = sp.collect(sp.expand(rhs), order)
-            body = _printer(names, model, warnings).doprint(rhs)
-
-            if lhs_txt is not None:
-                target = model.parse_derivative_name(lhs_txt)
-                if target is not None:
-                    tl, known = _latex_name(target, model)
-                    lhs_latex = r"\frac{d}{dt} " + (tl if known else _unknown_latex(target))
-                    if not known:
-                        warnings.append(f"« {target} » n'est pas dans le modèle")
-                else:
-                    tl, known = _latex_name(lhs_txt.strip(), model)
-                    lhs_latex = tl if known else _unknown_latex(lhs_txt.strip())
-                body = f"{lhs_latex} = {body}"
-            out.append(body)
-        if len(out) == 1:
-            latex = out[0]
-        else:  # plusieurs équations : un bloc par équation (coupure automatique)
-            latex = "\n\n".join(f"\\[\n{b}\n\\]" for b in out)
-        return {"ok": True, "latex": latex, "warnings": list(dict.fromkeys(warnings)),
-                "error": "", "count": len(out)}
-    except ModelError as exc:
-        return {"ok": False, "latex": "", "warnings": [], "error": str(exc), "count": 0}
-    except Exception as exc:
-        return {"ok": False, "latex": "", "warnings": [],
+        return {"ok": False, "python": "", "auto_names": [], "warnings": [],
                 "error": f"Erreur ({type(exc).__name__}) : {exc}", "count": 0}
 
 

@@ -1,18 +1,18 @@
-"""Panneau Traduction : LaTeX de l'éditeur ⇄ code Python selon le modèle."""
+"""Panneau Traduction : LaTeX de l'éditeur → code Python selon le modèle."""
 
 from __future__ import annotations
 
 import os
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QFontDatabase, QTextCursor
+from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QDockWidget, QGroupBox, QHBoxLayout, QLabel, QPlainTextEdit,
     QPushButton, QVBoxLayout, QWidget,
 )
 
 from ..core.model import DEFAULT_MODEL
-from ..core.translate import latex_to_python, python_to_latex, warm_up
+from ..core.translate import latex_to_python, warm_up
 from .model_dialog import ModelDialog
 from .worker import Runner
 
@@ -28,9 +28,7 @@ class TranslatePanel(QDockWidget):
         self.runner = Runner(warm_up=warm_up, parent=self)
         self.runner.finished.connect(self._on_result)
         self._l2p_id = 0
-        self._p2l_id = 0
         self._pending = False
-        self._p2l_revision = None
 
         mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         mono.setPointSize(11)
@@ -76,33 +74,8 @@ class TranslatePanel(QDockWidget):
         b_copy = QPushButton("Copier le Python")
         b_copy.clicked.connect(self._copy_python)
         l1.addWidget(b_copy)
-        lay.addWidget(box1, 3)
+        lay.addWidget(box1, 1)
 
-        # --- Python → LaTeX ----------------------------------------------
-        box2 = QGroupBox("Python → LaTeX (dans l'éditeur)")
-        l2 = QVBoxLayout(box2)
-        self.py_in = QPlainTextEdit()
-        self.py_in.setFont(mono)
-        self.py_in.setPlaceholderText("Collez une sortie de script, une ligne par équation, par ex.\n"
-                                      "dM_A1_A2/dt = -2*T_A1_A1_A2/KA + m*(M_A2_B1 + M_A1_B2)")
-        l2.addWidget(self.py_in, 1)
-        prow = QHBoxLayout()
-        self.collect = QCheckBox("Regrouper par moment")
-        self.collect.setToolTip("Met en facteur chaque moment (plus lisible qu'une sortie développée)")
-        self.collect.setChecked(self.s.get("tr_collect"))
-        self.collect.toggled.connect(lambda v: self.s.set("tr_collect", v))
-        prow.addWidget(self.collect)
-        prow.addStretch(1)
-        self.b_convert = QPushButton("Convertir dans l'éditeur")
-        self.b_convert.setToolTip("Remplace le texte de l'éditeur (⌘Z pour revenir en arrière)")
-        self.b_convert.clicked.connect(self.convert_python)
-        prow.addWidget(self.b_convert)
-        l2.addLayout(prow)
-        self.p2l_info = QLabel()
-        self.p2l_info.setWordWrap(True)
-        self.p2l_info.setTextFormat(Qt.TextFormat.PlainText)
-        l2.addWidget(self.p2l_info)
-        lay.addWidget(box2, 2)
         self.setWidget(w)
 
         self._timer = QTimer(self, singleShot=True, interval=DEBOUNCE_MS)
@@ -161,21 +134,9 @@ class TranslatePanel(QDockWidget):
         QApplication.clipboard().setText(self.py_out.toPlainText())
         self._info(self.l2p_info, "Code Python copié.", "ok")
 
-    # ------------------------------------------------------------ Python → LaTeX
-    def convert_python(self) -> None:
-        text = self.py_in.toPlainText()
-        if not text.strip():
-            self._info(self.p2l_info, "Collez d'abord du code Python au-dessus.", "error")
-            return
-        self._p2l_revision = self.editor.document().revision()
-        self._p2l_id = self.runner.submit(python_to_latex, 20, text=text, model_text=self.model_text,
-                                          collect=self.collect.isChecked())
-        self.b_convert.setEnabled(False)
-        self._info(self.p2l_info, "Conversion…", "")
-
     # ------------------------------------------------------------ résultats
     def _info(self, label: QLabel, text: str, kind: str) -> None:
-        color = {"error": "#b00020", "warn": "#a15c00", "ok": "#2e7d32"}.get(kind, "#333")
+        color = {"error": "#b00020", "warn": "#a15c00", "ok": "#2e7d32", "info": "#455a64"}.get(kind, "#333")
         label.setStyleSheet(f"color:{color};")
         label.setText(text)
 
@@ -183,40 +144,22 @@ class TranslatePanel(QDockWidget):
         if rid == self._l2p_id:
             if res["ok"]:
                 self.py_out.setPlainText(res["python"])
+                n = res.get("count", 0)
+                lines = [f"{n} équation{'s' if n > 1 else ''}." if n else ""]
+                auto = res.get("auto_names", [])
+                if auto:
+                    lines.append(f"{len(auto)} nom{'s' if len(auto) > 1 else ''} automatique"
+                                 f"{'s' if len(auto) > 1 else ''} (hors modèle) : " + ", ".join(auto))
+                kind = "info" if auto else "ok"
                 if res.get("warnings"):
-                    self._info(self.l2p_info, "⚠ " + " ; ".join(res["warnings"]), "warn")
-                else:
-                    n = res.get("count", 0)
-                    self._info(self.l2p_info, f"{n} équation{'s' if n > 1 else ''}, tous les symboles "
-                               "sont dans le modèle." if n else "", "ok")
+                    lines.append("⚠ " + " ; ".join(res["warnings"]))
+                    kind = "warn"
+                self._info(self.l2p_info, "\n".join(l for l in lines if l), kind)
             else:
                 self.py_out.setPlainText("")
                 self._info(self.l2p_info, res["error"], "error")
-        if rid == self._p2l_id:
-            self.b_convert.setEnabled(True)
-            self._apply_p2l(res)
         if self._pending and not self.runner.busy:
             self._request_l2p()
-
-    def _apply_p2l(self, res: dict) -> None:
-        if not res["ok"]:
-            self._info(self.p2l_info, res["error"], "error")
-            return
-        if self.editor.document().revision() != self._p2l_revision:
-            self._info(self.p2l_info, "L'éditeur a changé pendant la conversion : rien n'a été remplacé.",
-                       "error")
-            return
-        cur = QTextCursor(self.editor.document())
-        cur.select(QTextCursor.SelectionType.Document)
-        cur.beginEditBlock()  # un seul ⌘Z pour revenir en arrière
-        cur.insertText(res["latex"])
-        cur.endEditBlock()
-        n = res.get("count", 0)
-        msg = f"{n} équation{'s' if n > 1 else ''} dans l'éditeur (⌘Z pour revenir en arrière)."
-        if res.get("warnings"):
-            self._info(self.p2l_info, msg + "\n⚠ " + " ; ".join(res["warnings"]), "warn")
-        else:
-            self._info(self.p2l_info, msg, "ok")
 
     def shutdown(self) -> None:
         self.runner.shutdown()

@@ -1,5 +1,16 @@
 # Historique des versions
 
+## v0.6.0 — 2026-11-12
+Spécifié par exemples avec l'utilisateur avant le développement.
+- **Corrections proposées** quand le texte ne compile pas (accolades, \left/\right, commande
+  mal orthographiée, double exposant, Unicode, $ en trop) : seulement si la correction
+  compile ; aperçu à liseré orange, bouton Appliquer (⌘Z).
+- **Conseils** non bloquants : « \ » manquant (alpha, theta_A, partial, sum…), parenthèses
+  déséquilibrées, caractères Unicode.
+- Traduction : noms automatiques sans tiret bas pour les symboles hors modèle (N_{1} → N1),
+  affichés discrètement ; \approx et \simeq lus comme « = ».
+- Retiré : Python → LaTeX (le cœur SymPy reste pour le futur outil de calcul des moments).
+
 ## v0.5.1 — 2026-11-12
 - Traduction : les appels de fonction (`R1(z_star1)`) sont acceptés dans les deux sens
   (erreur « 'Symbol' object is not callable » corrigée) ; section [fonctions] du modèle.
