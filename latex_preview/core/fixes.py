@@ -218,16 +218,22 @@ def _left_right_candidates(text: str) -> list[Fix]:
 
 
 def _typo_candidates(text: str, errors, known: set[str]) -> list[Fix]:
+    """Commande mal orthographiée → commande connue la plus proche.
+
+    On ne dépend pas du journal de compilation (son format varie selon la version de
+    TeX Live) : on prend d'abord les commandes citées dans le journal, puis toutes les
+    commandes du texte qui ne sont pas connues. Seules les corrections qui compilent
+    seront retenues (pipeline)."""
+    from_log = [e.context[1:] for e in errors
+                if "Undefined control sequence" in e.message and e.context.startswith("\\")]
+    in_text = [n for n in re.findall(r"\\([A-Za-z]+)", text) if n not in known]
     out = []
-    bad = []
-    for e in errors:
-        if "Undefined control sequence" in e.message and e.context.startswith("\\"):
-            bad.append(e.context[1:])
-    for name in dict.fromkeys(bad):
-        if not re.search(r"\\" + re.escape(name) + r"(?![A-Za-z])", text):
+    for name in dict.fromkeys(from_log + in_text):
+        rx = re.compile(r"\\" + re.escape(name) + r"(?![A-Za-z])")
+        if not rx.search(text):
             continue
         for good in difflib.get_close_matches(name, sorted(known), n=2, cutoff=0.7):
-            out.append(Fix(re.sub(r"\\" + re.escape(name) + r"(?![A-Za-z])", lambda _: "\\" + good, text),
+            out.append(Fix(rx.sub(lambda _: "\\" + good, text),
                            f"« \\{name} » remplacé par « \\{good} »"))
     return out
 
@@ -262,9 +268,9 @@ def candidates(text: str, errors, preamble: str = "") -> list[Fix]:
     base = base_fix.text if base_fix else text
     msgs = " ".join(e.message for e in errors)
     structural: list[Fix] = []
+    structural += _typo_candidates(base, errors, known)
     structural += _brace_candidates(base)
     structural += _left_right_candidates(base)
-    structural += _typo_candidates(base, errors, known)
     if "Double superscript" in msgs or "Double subscript" in msgs:
         structural += _double_script_candidates(base)
     structural += _dollar_candidates(base)

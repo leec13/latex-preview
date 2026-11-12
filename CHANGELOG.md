@@ -1,5 +1,11 @@
 # Historique des versions
 
+## v0.6.1 — 2026-11-12
+- Commandes mal orthographiées (`\fracc`, `\lamda`, `\langel`) : la correction ne dépend
+  plus du journal de compilation, dont le format varie selon la version de TeX Live (aucune
+  proposition sur le Mac de l'utilisateur). Les commandes inconnues sont cherchées dans le
+  texte, et cette piste est essayée en premier.
+
 ## v0.6.0 — 2026-11-12
 Spécifié par exemples avec l'utilisateur avant le développement.
 - **Corrections proposées** quand le texte ne compile pas (accolades, \left/\right, commande

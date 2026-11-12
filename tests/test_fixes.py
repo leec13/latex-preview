@@ -94,3 +94,21 @@ def test_conseil_parentheses():
     assert advice("(a + b)) c", "math")[0].message == "Parenthèse « ) » en trop, ligne 1"
     assert "jamais fermée" in advice("(a + (b\n+ c)", "math")[0].message
     assert advice(r"\left( a \right) + (b)", "math") == []
+
+
+def test_faute_trouvee_sans_le_journal():
+    """Sur certaines versions de TeX Live, le journal ne cite pas la commande fautive :
+    la correction doit être trouvée quand même, en lisant le texte."""
+    from latex_preview.core.compiler import TexError
+    from latex_preview.core.fixes import candidates
+    for text, good in [(r"\fracc{1}{2}", r"\frac{1}{2}"), (r"\lamda + 1", r"\lambda + 1"),
+                       (r"\langel x \rangle", r"\langle x \rangle")]:
+        sans_contexte = [TexError("Undefined control sequence.")]          # journal muet
+        assert candidates(text, sans_contexte)[0].text == good
+        assert candidates(text, [TexError("Emergency stop.")])[0].text == good  # autre message
+
+
+def test_faute_a_cote_d_une_commande_valide(tex):
+    # \mathscr est hors liste mais valide avec mathrsfs ; la vraie faute est \lamda
+    out = render_snippet(tex, r"\lamda + \mathscr{L}", preamble="\\usepackage{amsmath}\n\\usepackage{mathrsfs}")
+    assert out.fix is not None and out.fix.text == r"\lambda + \mathscr{L}"
