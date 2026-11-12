@@ -112,3 +112,10 @@ def test_faute_a_cote_d_une_commande_valide(tex):
     # \mathscr est hors liste mais valide avec mathrsfs ; la vraie faute est \lamda
     out = render_snippet(tex, r"\lamda + \mathscr{L}", preamble="\\usepackage{amsmath}\n\\usepackage{mathrsfs}")
     assert out.fix is not None and out.fix.text == r"\lambda + \mathscr{L}"
+
+
+def test_plusieurs_fautes_ensemble(tex):
+    """Cas signalé : les trois exemples collés dans le même texte."""
+    f = fix_of(tex, r"\fracc{1}{2} \lamda + 1 \langel x \rangle", auto_break=True, line_width_pt=300)
+    assert f.text == r"\frac{1}{2} \lambda + 1 \langle x \rangle"
+    assert f.description == r"Commandes corrigées : \fracc → \frac, \lamda → \lambda, \langel → \langle"

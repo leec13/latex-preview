@@ -227,15 +227,28 @@ def _typo_candidates(text: str, errors, known: set[str]) -> list[Fix]:
     from_log = [e.context[1:] for e in errors
                 if "Undefined control sequence" in e.message and e.context.startswith("\\")]
     in_text = [n for n in re.findall(r"\\([A-Za-z]+)", text) if n not in known]
-    out = []
+    singles, best, logged = [], {}, []
     for name in dict.fromkeys(from_log + in_text):
         rx = re.compile(r"\\" + re.escape(name) + r"(?![A-Za-z])")
         if not rx.search(text):
             continue
-        for good in difflib.get_close_matches(name, sorted(known), n=2, cutoff=0.7):
-            out.append(Fix(rx.sub(lambda _: "\\" + good, text),
-                           f"« \\{name} » remplacé par « \\{good} »"))
-    return out
+        matches = difflib.get_close_matches(name, sorted(known), n=2, cutoff=0.7)
+        if matches:
+            best[name] = matches[0]
+        for good in matches:
+            fix = Fix(rx.sub(lambda _: "\\" + good, text), f"« \\{name} » remplacé par « \\{good} »")
+            (logged if name in from_log else singles).append(fix)
+    # Ordre : la commande citée par TeX corrigée seule, puis toutes ensemble, puis les autres.
+    out = logged
+    if len(best) > 1:
+        # Plusieurs fautes à la fois (\fracc … \lamda …) : toutes corrigées ensemble d'abord,
+        # sinon aucune correction isolée ne compile.
+        fixed = text
+        for name, good in best.items():
+            fixed = re.sub(r"\\" + re.escape(name) + r"(?![A-Za-z])", lambda _, g=good: "\\" + g, fixed)
+        out.append(Fix(fixed, "Commandes corrigées : "
+                       + ", ".join(f"\\{n} → \\{g}" for n, g in best.items())))
+    return out + singles
 
 
 def _double_script_candidates(text: str) -> list[Fix]:
