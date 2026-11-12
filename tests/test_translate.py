@@ -96,3 +96,52 @@ def test_unknown_names_round_trip():
     assert back["python"] == "dn_A1_dt = foo_bar + n_A1*zz"
     assert sorted(back["warnings"]) == sorted(["« \\mathrm{zz} » n'est pas dans le modèle",
                                                "« \\mathrm{foo\\_bar} » n'est pas dans le modèle"])
+
+
+# --- fonctions (R1(z_star1)) et notation N11 --------------------------------
+LINE_N11 = "dN11_dt = N11 * (R1(z_star1) - ((N11+N12)/K1)) - delta * N11 + delta * N21"
+EXTRA = """
+N11 = N_{11}
+N12 = N_{12}
+N21 = N_{21}
+K1 = K_1
+delta = \\delta
+z_star1 = z_1^*
+"""
+MOD_N11 = MOD.replace("t = t\n", "t = t\n" + EXTRA).replace("# R1 = R_1", "R1 = R_1")
+
+
+def same(py_a, py_b):
+    loc = {"R1": sp.Function("R1")}
+    return sp.simplify(sp.sympify(py_a.split("=", 1)[1], locals=loc)
+                       - sp.sympify(py_b.split("=", 1)[1], locals=loc)) == 0
+
+
+def test_function_call_round_trip_unknown():
+    lat = ok(P2L, LINE_N11, MOD)            # rien de déclaré : signalé mais traduit
+    assert r"\mathrm{R1}(\mathrm{z\_star1})" in lat["latex"]
+    assert "« R1 » (fonction) n'est pas dans le modèle" in lat["warnings"]
+    back = ok(L2P, lat["latex"], MOD)
+    assert back["python"].startswith("dN11_dt = ") and same(back["python"], LINE_N11)
+
+
+def test_function_call_round_trip_declared():
+    lat = ok(P2L, LINE_N11, MOD_N11)
+    assert lat["warnings"] == []
+    assert lat["latex"].startswith(r"\frac{d}{dt} N_{11} = ")
+    assert r"R_1\left(z_1^*\right)" in lat["latex"]
+    back = ok(L2P, lat["latex"], MOD_N11)
+    assert back["warnings"] == [] and same(back["python"], LINE_N11)
+
+
+def test_product_vs_call():
+    # \mathrm{X}\left(…\right) = produit ; \mathrm{X}(…) = appel ; variable du modèle = produit
+    assert ok(L2P, r"\mathrm{N11}\left(a + b\right)", MOD)["python"] == "N11*(a + b)"
+    assert ok(L2P, r"\mathrm{R1}(z)", MOD)["python"] == "R1(z)"
+    assert ok(L2P, r"N_{A}^{x_1}\left(r_{A}^{x_1} - 1\right)", MOD)["python"] == "NA1*(r_A1 - 1)"
+    assert ok(L2P, r"\frac{d}{dt} N(t) = a N(t)", MOD)["python"] == "dN_dt = a*N(t)"
+
+
+def test_partial_read_is_reported():
+    r = L2P(r"\frac{d}{dt} \bad{N}_{11} = a", MOD)
+    assert r["ok"] is False or "=" in r["python"]

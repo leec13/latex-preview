@@ -82,6 +82,11 @@ Ce panneau fait le lien entre les équations écrites en LaTeX, par exemple tran
   - les paramètres `rmaxA = r_{\max,A}`, `thA = \theta_A`, `KA = K_A`, `r_A1 = r_{A}^{x_1}`… ;
   - les définitions des `r_A1`….
 - Une même variable peut avoir plusieurs écritures, séparées par `|`. Par exemple, `N_{A}^{x_1} | N_{A}^{1}` reconnaît les deux notations, et la première sert pour l'affichage.
+- Les **fonctions** appelées avec des arguments, comme `R1(z_star1)`, se déclarent dans la section `[fonctions]`, par exemple `R1 = R_1`. Sans déclaration, la convention suivante s'applique :
+  - `\mathrm{R1}(z)`, avec une parenthèse simple, est un appel ;
+  - `\mathrm{N11}\left(…\right)` est un produit ;
+  - `\operatorname{f}(…)` est toujours une fonction.
+  Les noms hors modèle sont écrits `\mathrm{…}`, pour être relus comme un seul nom.
 - Un exposant sur un symbole du modèle est une puissance (`x_1^{2}` = x₁²). Un exposant qui fait partie d'un nom du modèle (`N_{A}^{x_1}`) est un indice.
 
 ## Dépannage

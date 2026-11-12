@@ -57,6 +57,10 @@ r_B1 = r_{B}^{x_1} | r_{B}^{1}
 r_B2 = r_{B}^{x_2} | r_{B}^{2}
 t = t
 
+[fonctions]
+# Fonctions appelées avec des arguments, ex. R1(z) : nom Python = LaTeX
+# R1 = R_1
+
 [definitions]
 # Remplacements facultatifs (case « Remplacer par les définitions »), en Python.
 r_A1 = rmaxA - s*(x1 - thA)**2
@@ -88,6 +92,7 @@ def normalize_latex(s: str) -> str:
 class Model:
     variables: list[tuple[str, list[str]]] = field(default_factory=list)
     parameters: list[tuple[str, list[str]]] = field(default_factory=list)
+    functions: list[tuple[str, list[str]]] = field(default_factory=list)
     definitions: dict[str, str] = field(default_factory=dict)
     prefixes: list[str] = field(default_factory=lambda: ["n", "M", "T", "Q"])
     separator: str = "_"
@@ -111,6 +116,11 @@ class Model:
             for lat in lats:
                 self._latex_to_param.setdefault(normalize_latex(lat), name)
         self.var_python = {self.variable_format.format(code=c): c for c, _ in self.variables}
+        self.function_latex = {name: lat[0] for name, lat in self.functions}
+        self._latex_to_function = {}
+        for name, lats in self.functions:
+            for lat in lats:
+                self._latex_to_function.setdefault(normalize_latex(lat), name)
 
     # ------------------------------------------------------------ requêtes
     def var_of_latex(self, latex: str) -> str | None:
@@ -118,6 +128,13 @@ class Model:
 
     def param_of_latex(self, latex: str) -> str | None:
         return self._latex_to_param.get(normalize_latex(latex))
+
+    def function_of_latex(self, latex: str) -> str | None:
+        return self._latex_to_function.get(normalize_latex(latex))
+
+    @property
+    def function_latex_keys(self) -> set[str]:
+        return set(self._latex_to_function)
 
     def prefix(self, order: int) -> str:
         return self.prefixes[order - 1] if order <= len(self.prefixes) else f"X{order}"
@@ -192,7 +209,8 @@ def parse_model(text: str) -> Model:
     variables = entries("variables")
     if not variables:
         raise ModelError("La section [variables] est vide.")
-    model = Model(variables=variables, parameters=entries("parametres"))
+    model = Model(variables=variables, parameters=entries("parametres"),
+                  functions=entries("fonctions"))
     if cp.has_section("moments"):
         sec = cp["moments"]
         if "prefixes" in sec:
