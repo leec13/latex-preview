@@ -9,6 +9,9 @@
 - `\right)` sans `\left` : plus de correction proposée (elle cachait l'erreur au lieu de la
   corriger) ; l'erreur et sa ligne restent signalées. `\left(` sans `\right` : seul l'ajout de
   `\right)` est proposé (la piste « \left( → ( » est retirée). Décision de l'utilisateur.
+- Correction proposée dans un **bandeau orange séparé**, juste sous l'aperçu, avec un bouton
+  Appliquer et le raccourci ⌘⇧↵ (menu Édition) ; le bandeau rouge ne garde que l'erreur.
+- Essais de correction plus rapides : sans coupure des lignes (une compilation par essai).
 
 ## v0.6.0 — 2026-11-12
 Spécifié par exemples avec l'utilisateur avant le développement.

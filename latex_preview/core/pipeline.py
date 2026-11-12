@@ -50,10 +50,13 @@ def render_snippet(
     if out.ok:
         out.advice = advice(text, out.doc.mode)
         return out
+    # Essais sans coupure des lignes (une seule compilation par essai) ; seul l'aperçu
+    # de la correction retenue est refait avec la mise en page de l'utilisateur.
     for cand in candidates(text, out.result.errors, preamble)[:MAX_FIX_TRIES]:
-        trial = _render(compiler, cand.text, *args[2:])
+        trial = _render(compiler, cand.text, preamble, engine, font_size, text_width_cm, False, line_width_pt)
         if trial.ok:
-            out.fix, out.fix_cropped = cand, trial.cropped
+            final = _render(compiler, cand.text, *args[2:]) if auto_break else trial
+            out.fix, out.fix_cropped = cand, (final.cropped if final.ok else trial.cropped)
             break
     return out
 
