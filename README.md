@@ -56,13 +56,14 @@ alias ltx='conda run --no-capture-output -n latex-preview latex-preview &'
 
 ## Erreurs : corrections proposées et conseils
 
-**Quand le texte ne compile pas**, l'outil cherche une correction vraisemblable et **ne la propose que si le texte corrigé compile vraiment**. L'aperçu montre alors le rendu corrigé avec un **liseré orange**, et la correction est décrite sous l'aperçu. **Appliquer** modifie le texte, et ⌘Z revient en arrière. Rien ne change sans ce clic. Sans correction possible, l'aperçu garde le dernier rendu valide en grisé.
+**Quand le texte ne compile pas**, l'outil cherche une correction vraisemblable et **ne la propose que si le texte corrigé compile vraiment**. L'aperçu montre alors le rendu corrigé avec un **liseré orange**, et la correction est décrite dans un **bandeau orange** juste sous l'aperçu. **Appliquer**, ou **⌘⇧↵**, modifie le texte, et ⌘Z revient en arrière. Rien ne change sans ce clic. Sans correction possible, l'aperçu garde le dernier rendu valide en grisé.
 
 | Erreur | Correction proposée |
 |---|---|
 | accolade non fermée (`\frac{a}{b`, `\frac{\partial{N}{\partial t}`) | `}` ajoutée au bon endroit |
 | accolade en trop | `}` supprimée |
-| `\left(` sans `\right)`, ou l'inverse | `\right)` ajouté, ou `\right)` remplacé par `)` |
+| `\left(` sans `\right)` | `\right)` ajouté en fin de ligne |
+| `\right)` sans `\left(` | **pas de correction** : l'erreur et sa ligne sont signalées, et c'est à vous de placer le `\left(` |
 | commande mal orthographiée (`\fracc`, `\lamda`, `\langel`) | la commande connue la plus proche, macros du préambule comprises |
 | double exposant `x^2^3` | `x^{2^3}` |
 | caractères Unicode collés (`α ≤ β · γ`) | `\alpha \leq \beta \cdot \gamma` |
@@ -90,7 +91,7 @@ Chaque équation de l'éditeur est traduite en une ligne de code Python, en dire
   - **Développer** donne le même format que `--print-eqs` ;
   - **Remplacer par les définitions** remplace par exemple `r_A1` par `rmaxA - s*(x1 - thA)**2`.
 - **Le modèle** est un fichier `.ini` lisible, qu'on modifie avec « Modifier le modèle… ». On peut l'enregistrer, le partager et en ouvrir un autre. Une variable peut avoir plusieurs écritures, séparées par `|` (`N_{A}^{x_1} | N_{A}^{1}`), et la première sert pour l'affichage.
-- Une erreur de frappe ne produit jamais de traduction partielle : le message d'erreur s'affiche à la place du code.
+- **Rien n'est traduit tant que le LaTeX ne compile pas.** Le panneau affiche alors « Le LaTeX ne compile pas : corrigez d'abord l'erreur ». La traduction suit chaque compilation réussie de l'aperçu.
 
 ## Dépannage
 

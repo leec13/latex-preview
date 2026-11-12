@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QFontDatabase, QKeySequence, QTextCursor, QTextFormat
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QDialog, QFileDialog, QLabel, QMainWindow,
-    QMessageBox, QPlainTextEdit, QSplitter, QTextEdit, QToolBar, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QMainWindow,
+    QMessageBox, QPlainTextEdit, QPushButton, QSplitter, QTextEdit, QToolBar, QVBoxLayout, QWidget,
 )
 
 from ..core.compiler import ENGINES, TexCompiler, find_engine
@@ -86,6 +86,23 @@ class MainWindow(QMainWindow):
             " padding:6px 8px; font-size:12px; }")
         self.advice_label.linkActivated.connect(self._on_advice_link)
         self.advice_label.hide()
+        # Bandeau orange de la correction proposée, juste sous l'aperçu (assorti au liseré).
+        self.fix_bar = QWidget()
+        self.fix_bar.setObjectName("fix_bar")
+        self.fix_bar.setStyleSheet(
+            "#fix_bar { background:#fff3e0; border-top:2px solid #f0a020; }"
+            " QLabel { color:#6d4000; font-size:13px; }")
+        fl = QHBoxLayout(self.fix_bar)
+        fl.setContentsMargins(10, 6, 10, 6)
+        self.fix_label = QLabel()
+        self.fix_label.setWordWrap(True)
+        self.fix_label.setTextFormat(Qt.TextFormat.RichText)
+        fl.addWidget(self.fix_label, 1)
+        self.fix_button = QPushButton("Appliquer")
+        self.fix_button.setToolTip("Appliquer la correction proposée (⌘⇧↵) — ⌘Z pour revenir en arrière")
+        self.fix_button.clicked.connect(self.apply_fix)
+        fl.addWidget(self.fix_button)
+        self.fix_bar.hide()
         self._fix = None        # (texte d'origine, Fix) proposée
         self._advice = None     # (texte d'origine, [Advice])
 
@@ -94,6 +111,7 @@ class MainWindow(QMainWindow):
         rl.setContentsMargins(0, 0, 0, 0)
         rl.setSpacing(0)
         rl.addWidget(self.preview, 1)
+        rl.addWidget(self.fix_bar)
         rl.addWidget(self.advice_label)
         rl.addWidget(self.error_label)
 
@@ -146,6 +164,10 @@ class MainWindow(QMainWindow):
     def _build_actions(self) -> None:
         self.a_refresh = self._act("Actualiser", lambda: self.refresh(force=True), "Ctrl+Return",
                                    "Recompiler maintenant (⌘↵)")
+        self.a_apply_fix = self._act("Appliquer la correction proposée", self.apply_fix, "Ctrl+Shift+Return",
+                                     "Appliquer la correction proposée (⌘⇧↵)")
+        self.a_apply_fix.setEnabled(False)
+        self.addAction(self.a_apply_fix)  # raccourci actif même depuis l'éditeur
         self.a_paste_replace = self._act("Coller en remplaçant", self.paste_replace, "Ctrl+Shift+V",
                                          "Remplacer tout le texte par le presse-papiers (⇧⌘V)")
         self.a_copy_img = self._act("Copier l'image", self.copy_image, "Ctrl+Shift+C",
@@ -224,6 +246,7 @@ class MainWindow(QMainWindow):
             m.addSeparator() if a is None else m.addAction(a)
         m = mb.addMenu("Édition")
         m.addAction(self.a_paste_replace)
+        m.addAction(self.a_apply_fix)
         m.addAction(self.a_refresh)
         m = mb.addMenu("Affichage")
         for a in (self.a_zoom_in, self.a_zoom_out, self.a_zoom_100, self.a_fit, None, self.a_layout,
@@ -316,6 +339,7 @@ class MainWindow(QMainWindow):
             self.preview.show_placeholder("Collez du LaTeX dans l'éditeur.")
             self._show_errors([])
             self._show_advice("", [])
+            self.translate_panel.on_compiled("", True)
             self.statusBar().clearMessage()
             return
         if not force and job == self._last_job:
@@ -346,6 +370,7 @@ class MainWindow(QMainWindow):
         out, job = outcome.render, outcome.job
         self._last_log = out.result.log
         self._fix = (job.text, out.fix) if out.fix else None
+        self.translate_panel.on_compiled(job.text, out.result.ok)
         self._show_advice(job.text, out.advice or [])
         if out.result.ok:
             self._last_mode = out.doc.mode
@@ -374,8 +399,22 @@ class MainWindow(QMainWindow):
                 self._start(job)
 
     # -------------------------------------------------------------- erreurs
+    def _show_fix(self, fix) -> None:
+        self.a_apply_fix.setEnabled(fix is not None)
+        if fix is None:
+            self.fix_bar.hide()
+            return
+        self.fix_label.setText(f"✎ <b>Correction proposée</b> : {html.escape(fix.description)}"
+                               " <span style='color:#9a6a20'>(aperçu à liseré orange)</span>")
+        self.fix_bar.show()
+
+    def apply_fix(self) -> None:
+        if self._fix:
+            self._replace_text(self._fix[0], self._fix[1].text)
+
     def _show_errors(self, errors, fix=None) -> None:
         self._clear_error_highlight()
+        self._show_fix(fix)
         if not errors:
             self.error_label.hide()
             return
@@ -390,11 +429,7 @@ class MainWindow(QMainWindow):
             else:
                 parts.append(f"{msg}{ctx}")
         more = "" if len(errors) <= 4 else f"<br>… et {len(errors) - 4} autre(s)."
-        text = "<br>".join(parts) + more + " &nbsp; <a href='log'>Journal complet</a>"
-        if fix is not None:
-            text += ("<br><span style='color:#8a5300'><b>Correction proposée</b> (aperçu à liseré orange) : "
-                     f"{html.escape(fix.description)}</span> &nbsp; <a href='applyfix'><b>Appliquer</b></a>")
-        self.error_label.setText(text)
+        self.error_label.setText("<br>".join(parts) + more + " &nbsp; <a href='log'>Journal complet</a>")
         self.error_label.show()
         first = next((e for e in errors if e.line and e.zone == "extrait"), None)
         if first:
@@ -424,8 +459,6 @@ class MainWindow(QMainWindow):
             self.edit_options()
         elif link == "log":
             self.show_log()
-        elif link == "applyfix" and self._fix:
-            self._replace_text(*self._fix[0:1], self._fix[1].text)
 
     def _show_advice(self, source: str, items) -> None:
         self._advice = (source, items) if items else None

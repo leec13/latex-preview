@@ -39,8 +39,18 @@ def test_left_sans_right(tex):
     assert fix_of(tex, r"\left( \frac{N}{K}").text == r"\left( \frac{N}{K} \right)"
 
 
-def test_right_sans_left(tex):
-    assert fix_of(tex, r"a + b \right)").text == r"a + b )"
+def test_right_sans_left_pas_de_correction(tex):
+    r"""VALIDÉ (12/11) : rien n'indique où placer le \left ; remplacer \right) par ) cacherait
+    l'erreur. On la signale (avec la ligne), sans correction."""
+    out = render_snippet(tex, r"a + b \right)")
+    assert not out.ok and out.fix is None
+    e = out.result.errors[0]
+    assert e.line == 1 and "\\right sans \\left" in e.friendly
+
+
+def test_left_sans_right_pas_de_remplacement_par_parenthese(tex):
+    out = render_snippet(tex, r"\left( a + b")
+    assert out.fix.text == r"\left( a + b \right)"
 
 
 def test_commandes_mal_orthographiees(tex):
@@ -94,3 +104,52 @@ def test_conseil_parentheses():
     assert advice("(a + b)) c", "math")[0].message == "Parenthèse « ) » en trop, ligne 1"
     assert "jamais fermée" in advice("(a + (b\n+ c)", "math")[0].message
     assert advice(r"\left( a \right) + (b)", "math") == []
+
+
+def test_faute_trouvee_sans_le_journal():
+    """Sur certaines versions de TeX Live, le journal ne cite pas la commande fautive :
+    la correction doit être trouvée quand même, en lisant le texte."""
+    from latex_preview.core.compiler import TexError
+    from latex_preview.core.fixes import candidates
+    for text, good in [(r"\fracc{1}{2}", r"\frac{1}{2}"), (r"\lamda + 1", r"\lambda + 1"),
+                       (r"\langel x \rangle", r"\langle x \rangle")]:
+        sans_contexte = [TexError("Undefined control sequence.")]          # journal muet
+        assert candidates(text, sans_contexte)[0].text == good
+        assert candidates(text, [TexError("Emergency stop.")])[0].text == good  # autre message
+
+
+def test_faute_a_cote_d_une_commande_valide(tex):
+    # \mathscr est hors liste mais valide avec mathrsfs ; la vraie faute est \lamda
+    out = render_snippet(tex, r"\lamda + \mathscr{L}", preamble="\\usepackage{amsmath}\n\\usepackage{mathrsfs}")
+    assert out.fix is not None and out.fix.text == r"\lambda + \mathscr{L}"
+
+
+def test_plusieurs_fautes_ensemble(tex):
+    """Cas signalé : les trois exemples collés dans le même texte."""
+    f = fix_of(tex, r"\fracc{1}{2} \lamda + 1 \langel x \rangle", auto_break=True, line_width_pt=300)
+    assert f.text == r"\frac{1}{2} \lambda + 1 \langle x \rangle"
+    assert f.description == r"Commandes corrigées : \fracc → \frac, \lamda → \lambda, \langel → \langle"
+
+
+# Journal réel de l'utilisateur (TeX Live 2026, macOS), qui ajoute un texte d'aide après l'erreur.
+LOG_TL2026 = r"""(/usr/local/texlive/2026/texmf-dist/tex/latex/amsfonts/umsb.fd
+File: umsb.fd 2013/01/14 v3.01 AMS symbols B
+)
+./preview.tex:16: Undefined control sequence.
+l.16 \lamda
+            + 1
+The control sequence at the end of the top line
+of your error message was never \def'ed. If you have
+misspelled it (e.g., `\hobx'), type `I' and the correct
+spelling (e.g., `I\hbox'). Otherwise just continue,
+and I'll forget about whatever was undefined.
+"""
+
+
+def test_journal_texlive_2026():
+    from latex_preview.core.compiler import parse_errors
+    from latex_preview.core.document import build_document
+    from latex_preview.core.fixes import candidates
+    errs = parse_errors(LOG_TL2026, build_document(r"\lamda + 1", auto_break=True, line_width_pt=300))
+    assert [(e.message, e.line, e.context) for e in errs] == [("Undefined control sequence.", 1, r"\lamda")]
+    assert candidates(r"\lamda + 1", errs)[0].text == r"\lambda + 1"

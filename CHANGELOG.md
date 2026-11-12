@@ -1,5 +1,21 @@
 # Historique des versions
 
+## v0.6.1 — 2026-11-12
+- Commandes mal orthographiées : plusieurs fautes dans le même texte (`\fracc{1}{2} \lamda + 1
+  \langel x \rangle`) sont corrigées ensemble ; avant, aucune correction isolée ne compilait
+  et rien n'était proposé (cas signalé par l'utilisateur).
+- Les commandes inconnues sont aussi cherchées dans le texte, pas seulement dans le journal
+  de TeX. Ordre des essais : commande citée par TeX seule, puis toutes ensemble, puis les autres.
+- `\right)` sans `\left` : plus de correction proposée (elle cachait l'erreur au lieu de la
+  corriger) ; l'erreur et sa ligne restent signalées. `\left(` sans `\right` : seul l'ajout de
+  `\right)` est proposé (la piste « \left( → ( » est retirée). Décision de l'utilisateur.
+- Correction proposée dans un **bandeau orange séparé**, juste sous l'aperçu, avec un bouton
+  Appliquer et le raccourci ⌘⇧↵ (menu Édition) ; le bandeau rouge ne garde que l'erreur.
+- Essais de correction plus rapides : sans coupure des lignes (une compilation par essai).
+- Traduction : rien n'est traduit tant que le LaTeX ne compile pas (message « Le LaTeX ne
+  compile pas : corrigez d'abord l'erreur ») ; avant, une traduction fausse s'affichait
+  (`\fracc{1}{2} + \lamda` → `2*fracc + lambda`). Choix (a) de l'utilisateur.
+
 ## v0.6.0 — 2026-11-12
 Spécifié par exemples avec l'utilisateur avant le développement.
 - **Corrections proposées** quand le texte ne compile pas (accolades, \left/\right, commande

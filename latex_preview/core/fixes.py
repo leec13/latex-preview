@@ -197,39 +197,44 @@ def _left_right_candidates(text: str) -> list[Fix]:
         end = len(text.rstrip())
         if end != eol:
             out.append(Fix(_insert(text, end, " " + close), f"« {close} » ajouté à la fin"))
-        out.append(Fix(text[:unmatched.start()] + delim + text[unmatched.end():],
-                       f"« \\left{delim} » remplacé par « {delim} » (ligne {line})"))
-    elif len(rights) > len(lefts):
-        stack, extra = 0, None
-        events = sorted([(m.start(), +1, m) for m in lefts] + [(m.start(), -1, m) for m in rights])
-        for _, kind, m in events:
-            if kind > 0:
-                stack += 1
-            elif stack:
-                stack -= 1
-            elif extra is None:
-                extra = m
-        extra = extra or rights[0]
-        delim = extra.group(1)
-        out.append(Fix(text[:extra.start()] + delim + text[extra.end():],
-                       f"« \\right{delim} » sans \\left remplacé par « {delim} » "
-                       f"(ligne {_line_of(text, extra.start())})"))
+    # \right sans \left : aucune correction (validé avec l'utilisateur) — rien n'indique
+    # où placer le \left, et remplacer \right) par ) cacherait l'erreur au lieu de la
+    # corriger. Le message de TeX indique la ligne ; l'utilisateur place le \left lui-même.
     return out
 
 
 def _typo_candidates(text: str, errors, known: set[str]) -> list[Fix]:
-    out = []
-    bad = []
-    for e in errors:
-        if "Undefined control sequence" in e.message and e.context.startswith("\\"):
-            bad.append(e.context[1:])
-    for name in dict.fromkeys(bad):
-        if not re.search(r"\\" + re.escape(name) + r"(?![A-Za-z])", text):
+    """Commande mal orthographiée → commande connue la plus proche.
+
+    On ne dépend pas du journal de compilation (son format varie selon la version de
+    TeX Live) : on prend d'abord les commandes citées dans le journal, puis toutes les
+    commandes du texte qui ne sont pas connues. Seules les corrections qui compilent
+    seront retenues (pipeline)."""
+    from_log = [e.context[1:] for e in errors
+                if "Undefined control sequence" in e.message and e.context.startswith("\\")]
+    in_text = [n for n in re.findall(r"\\([A-Za-z]+)", text) if n not in known]
+    singles, best, logged = [], {}, []
+    for name in dict.fromkeys(from_log + in_text):
+        rx = re.compile(r"\\" + re.escape(name) + r"(?![A-Za-z])")
+        if not rx.search(text):
             continue
-        for good in difflib.get_close_matches(name, sorted(known), n=2, cutoff=0.7):
-            out.append(Fix(re.sub(r"\\" + re.escape(name) + r"(?![A-Za-z])", lambda _: "\\" + good, text),
-                           f"« \\{name} » remplacé par « \\{good} »"))
-    return out
+        matches = difflib.get_close_matches(name, sorted(known), n=2, cutoff=0.7)
+        if matches:
+            best[name] = matches[0]
+        for good in matches:
+            fix = Fix(rx.sub(lambda _: "\\" + good, text), f"« \\{name} » remplacé par « \\{good} »")
+            (logged if name in from_log else singles).append(fix)
+    # Ordre : la commande citée par TeX corrigée seule, puis toutes ensemble, puis les autres.
+    out = logged
+    if len(best) > 1:
+        # Plusieurs fautes à la fois (\fracc … \lamda …) : toutes corrigées ensemble d'abord,
+        # sinon aucune correction isolée ne compile.
+        fixed = text
+        for name, good in best.items():
+            fixed = re.sub(r"\\" + re.escape(name) + r"(?![A-Za-z])", lambda _, g=good: "\\" + g, fixed)
+        out.append(Fix(fixed, "Commandes corrigées : "
+                       + ", ".join(f"\\{n} → \\{g}" for n, g in best.items())))
+    return out + singles
 
 
 def _double_script_candidates(text: str) -> list[Fix]:
@@ -262,9 +267,9 @@ def candidates(text: str, errors, preamble: str = "") -> list[Fix]:
     base = base_fix.text if base_fix else text
     msgs = " ".join(e.message for e in errors)
     structural: list[Fix] = []
+    structural += _typo_candidates(base, errors, known)
     structural += _brace_candidates(base)
     structural += _left_right_candidates(base)
-    structural += _typo_candidates(base, errors, known)
     if "Double superscript" in msgs or "Double subscript" in msgs:
         structural += _double_script_candidates(base)
     structural += _dollar_candidates(base)
