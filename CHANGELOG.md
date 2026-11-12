@@ -12,6 +12,9 @@
 - Correction proposée dans un **bandeau orange séparé**, juste sous l'aperçu, avec un bouton
   Appliquer et le raccourci ⌘⇧↵ (menu Édition) ; le bandeau rouge ne garde que l'erreur.
 - Essais de correction plus rapides : sans coupure des lignes (une compilation par essai).
+- Traduction : rien n'est traduit tant que le LaTeX ne compile pas (message « Le LaTeX ne
+  compile pas : corrigez d'abord l'erreur ») ; avant, une traduction fausse s'affichait
+  (`\fracc{1}{2} + \lamda` → `2*fracc + lambda`). Choix (a) de l'utilisateur.
 
 ## v0.6.0 — 2026-11-12
 Spécifié par exemples avec l'utilisateur avant le développement.

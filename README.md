@@ -91,7 +91,7 @@ Chaque équation de l'éditeur est traduite en une ligne de code Python, en dire
   - **Développer** donne le même format que `--print-eqs` ;
   - **Remplacer par les définitions** remplace par exemple `r_A1` par `rmaxA - s*(x1 - thA)**2`.
 - **Le modèle** est un fichier `.ini` lisible, qu'on modifie avec « Modifier le modèle… ». On peut l'enregistrer, le partager et en ouvrir un autre. Une variable peut avoir plusieurs écritures, séparées par `|` (`N_{A}^{x_1} | N_{A}^{1}`), et la première sert pour l'affichage.
-- Une erreur de frappe ne produit jamais de traduction partielle : le message d'erreur s'affiche à la place du code.
+- **Rien n'est traduit tant que le LaTeX ne compile pas.** Le panneau affiche alors « Le LaTeX ne compile pas : corrigez d'abord l'erreur ». La traduction suit chaque compilation réussie de l'aperçu.
 
 ## Dépannage
 

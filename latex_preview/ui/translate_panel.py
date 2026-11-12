@@ -16,7 +16,6 @@ from ..core.translate import latex_to_python, warm_up
 from .model_dialog import ModelDialog
 from .worker import Runner
 
-DEBOUNCE_MS = 300
 
 
 class TranslatePanel(QDockWidget):
@@ -78,9 +77,12 @@ class TranslatePanel(QDockWidget):
 
         self.setWidget(w)
 
-        self._timer = QTimer(self, singleShot=True, interval=DEBOUNCE_MS)
+        self._timer = QTimer(self, singleShot=True, interval=50)
         self._timer.timeout.connect(self._request_l2p)
-        self.editor.textChanged.connect(self._timer.start)
+        # La traduction suit la compilation de l'aperçu (validé le 12/11, solution a) :
+        # rien n'est traduit tant que le texte ne compile pas. Voir on_compiled().
+        self._compiled: tuple[str, bool] | None = None   # (texte, compile ?)
+        self._l2p_text = ""
         self.visibilityChanged.connect(lambda v: v and self._timer.start())
         self._update_model_label()
         self._timer.start()
@@ -121,14 +123,33 @@ class TranslatePanel(QDockWidget):
             self._pending = True
             return
         self._pending = False
-        text = self.editor.toPlainText()
+        if self._compiled is None:
+            return
+        text, compiles = self._compiled
         if not text.strip():
             self.py_out.setPlainText("")
             self.l2p_info.setText("")
             return
+        if not compiles:
+            self._show_not_compiling()
+            return
+        self._l2p_text = text
         self._l2p_id = self.runner.submit(latex_to_python, 15, text=text, model_text=self.model_text,
                                           expand=self.expand.isChecked(),
                                           use_definitions=self.defs.isChecked())
+
+    def on_compiled(self, text: str, ok: bool) -> None:
+        """Appelé par la fenêtre après chaque compilation de l'aperçu."""
+        self._compiled = (text, ok)
+        if ok:
+            self._timer.start()
+        else:
+            self._show_not_compiling()
+
+    def _show_not_compiling(self) -> None:
+        self.py_out.setPlainText("")
+        self._info(self.l2p_info, "Le LaTeX ne compile pas : corrigez d'abord l'erreur "
+                   "(voir sous l'aperçu).", "error")
 
     def _copy_python(self) -> None:
         QApplication.clipboard().setText(self.py_out.toPlainText())
@@ -141,7 +162,10 @@ class TranslatePanel(QDockWidget):
         label.setText(text)
 
     def _on_result(self, rid: int, res: dict) -> None:
-        if rid == self._l2p_id:
+        current = self._compiled is not None and self._compiled == (self._l2p_text, True)
+        if rid == self._l2p_id and not current:
+            pass  # traduction d'un texte qui a changé depuis (ou qui ne compile plus) : ignorée
+        elif rid == self._l2p_id:
             if res["ok"]:
                 self.py_out.setPlainText(res["python"])
                 n = res.get("count", 0)

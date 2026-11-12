@@ -339,6 +339,7 @@ class MainWindow(QMainWindow):
             self.preview.show_placeholder("Collez du LaTeX dans l'éditeur.")
             self._show_errors([])
             self._show_advice("", [])
+            self.translate_panel.on_compiled("", True)
             self.statusBar().clearMessage()
             return
         if not force and job == self._last_job:
@@ -369,6 +370,7 @@ class MainWindow(QMainWindow):
         out, job = outcome.render, outcome.job
         self._last_log = out.result.log
         self._fix = (job.text, out.fix) if out.fix else None
+        self.translate_panel.on_compiled(job.text, out.result.ok)
         self._show_advice(job.text, out.advice or [])
         if out.result.ok:
             self._last_mode = out.doc.mode
