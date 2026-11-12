@@ -22,7 +22,7 @@ from ..settings import Settings
 from .highlighter import LatexHighlighter
 from .options_dialog import OptionsDialog
 from .preview import PreviewArea, cropped_to_qimage
-from .sympy_panel import SympyPanel
+from .translate_panel import TranslatePanel
 
 DEBOUNCE_MS = 450
 
@@ -93,8 +93,8 @@ class MainWindow(QMainWindow):
         self.splitter.setChildrenCollapsible(False)
         self.setCentralWidget(self.splitter)
 
-        self.sympy_panel = SympyPanel(self.editor, self.s, self)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.sympy_panel)
+        self.translate_panel = TranslatePanel(self.editor, self.s, self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.translate_panel)
 
         self._build_actions()
         self._build_toolbar()
@@ -153,10 +153,10 @@ class MainWindow(QMainWindow):
         self.a_layout.setCheckable(True)
         self.a_log = self._act("Journal de compilation…", self.show_log, "Ctrl+L")
         self.a_quit = self._act("Quitter", self.close, QKeySequence.StandardKey.Quit)
-        self.a_sympy = self.sympy_panel.toggleViewAction()
-        self.a_sympy.setText("Panneau SymPy")
-        self.a_sympy.setShortcut(QKeySequence("Ctrl+K"))
-        self.a_sympy.setToolTip("Afficher / masquer le panneau SymPy (⌘K)")
+        self.a_translate = self.translate_panel.toggleViewAction()
+        self.a_translate.setText("Traduction")
+        self.a_translate.setShortcut(QKeySequence("Ctrl+K"))
+        self.a_translate.setToolTip("Afficher / masquer le panneau Traduction LaTeX ⇄ Python (⌘K)")
 
     def _build_toolbar(self) -> None:
         tb = QToolBar("Outils")
@@ -198,7 +198,7 @@ class MainWindow(QMainWindow):
         tb.addAction(self.a_pdf)
         tb.addAction(self.a_png)
         tb.addSeparator()
-        tb.addAction(self.a_sympy)
+        tb.addAction(self.a_translate)
         tb.addAction(self.a_options)
         self.a_zoom_out.setText("−")
         self.a_zoom_in.setText("+")
@@ -215,7 +215,7 @@ class MainWindow(QMainWindow):
         m.addAction(self.a_refresh)
         m = mb.addMenu("Affichage")
         for a in (self.a_zoom_in, self.a_zoom_out, self.a_zoom_100, self.a_fit, None, self.a_layout,
-                  self.a_sympy, self.a_log):
+                  self.a_translate, self.a_log):
             m.addSeparator() if a is None else m.addAction(a)
         m = mb.addMenu("Document")
         m.addAction(self.a_options)
@@ -243,7 +243,7 @@ class MainWindow(QMainWindow):
         q.setValue("geometry", self.saveGeometry())
         q.setValue("splitter", self.splitter.saveState())
         q.setValue("window_state", self.saveState())
-        self.sympy_panel.shutdown()
+        self.translate_panel.shutdown()
         self.s.set("last_text", self.editor.toPlainText())
         self.s.set("zoom", self.preview.zoom)
         if self._busy:  # une compilation tourne encore : nettoyer à la sortie

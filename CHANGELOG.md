@@ -1,5 +1,15 @@
 # Historique des versions
 
+## v0.5.0 — 2026-11-12
+- Le panneau SymPy est remplacé par un panneau **Traduction LaTeX ⇄ Python** (⌘K), fondé sur
+  un **modèle** de correspondances (fichier .ini partageable) : n_A1, M_A1_A2, T_…, Q_…,
+  paramètres rmaxA, thA, KA, r_A1… comme dans moment_closure.py. Aucun symbole deviné :
+  ce qui n'est pas dans le modèle est signalé.
+- LaTeX → Python en direct (systèmes align compris), options Développer et Définitions.
+- Python → LaTeX vers l'éditeur, option Regrouper par moment ; aller-retour exact.
+- Le cœur SymPy (core/sympy_ops.py) est conservé : il sert à la lecture du LaTeX et
+  servira au futur outil de calcul des moments.
+
 ## v0.4.0 — 2026-11-11
 - SymPy : substitutions **simultanées** (tableau de remplacements ; X↔Y donne YX),
   propagées à l'intérieur des moments ⟨…⟩ et des dérivées d⟨…⟩/dt. Bouton « Ajouter l'inverse ».

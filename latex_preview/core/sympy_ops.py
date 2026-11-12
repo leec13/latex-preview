@@ -115,7 +115,12 @@ class Context:
         return sp.Symbol(name, positive=True) if self.positive else sp.Symbol(name)
 
     def latex_of(self, sym) -> str:
-        return self.atom_latex.get(sym.name) or _sympy().latex(sym)
+        if sym.name in self.atom_latex:
+            return self.atom_latex[sym.name]
+        # Le parseur nomme « theta_{A} » (sans \\) un \\theta_A : on rétablit.
+        if re.match(_GREEK + r"(?![A-Za-z])", sym.name) and "_" in sym.name:
+            return "\\" + sym.name
+        return _sympy().latex(sym)
 
     def expand(self, text: str) -> str:
         """Remplace les symboles opaques d'un texte par leur LaTeX d'origine."""
@@ -263,7 +268,19 @@ def _protect(s: str, ctx: Context) -> str:
                     # Opérateur seul (\frac{d}{dt} f) : laissé au parseur.
                     body = re.sub(r"^\s*(\\mathrm\{d\}|d|\\partial)(\^\{?\d+\}?)?", "", num[0]).strip()
                     if body:
-                        out.append(ctx.atom(ctx.expand(s[i:den[1]])))
+                        ph = ctx.atom(ctx.expand(s[i:den[1]]))
+                        # \frac{d\langle…\rangle}{dt}, \frac{dN_{A}^{x_1}}{dt} : on retient
+                        # de quoi c'est la dérivée (utile pour la traduction).
+                        inner_ph = _PLACEHOLDER_RE.fullmatch(body)
+                        if inner_ph is None:
+                            end_b = _indexed_symbol_end(body, 0, ctx)
+                            if end_b == len(body):
+                                inner_ph = _PLACEHOLDER_RE.fullmatch(ctx.atom(body))
+                            elif re.fullmatch(r"[A-Za-z]|\\" + _GREEK, body):
+                                inner_ph = _PLACEHOLDER_RE.fullmatch(ctx.atom(body))
+                        if inner_ph is not None:
+                            ctx.derivs[ph[8:-1]] = (r"\frac{d}{dt}", inner_ph.group(0)[8:-1])
+                        out.append(ph)
                         i = den[1]
                         continue
                     # Forme opérateur \frac{d}{dt} X : si X est un symbole
@@ -278,11 +295,9 @@ def _protect(s: str, ctx: Context) -> str:
                         end_sym = k2 + m_l.end() if m_l else None
                     if end_sym is not None:
                         ph = ctx.atom(ctx.expand(s[i:end_sym]))
-                        if m_ph:
-                            inner_name = m_ph.group(0)[len(r"\mathit{"):-1]
-                            if inner_name in ctx.moments:
-                                prefix = ctx.expand(s[i:k2]).rstrip()
-                                ctx.derivs[ph[len(r"\mathit{"):-1]] = (prefix, inner_name)
+                        inner = m_ph.group(0) if m_ph else ctx.atom(s[k2:end_sym])
+                        prefix = ctx.expand(s[i:k2]).rstrip()
+                        ctx.derivs[ph[8:-1]] = (prefix, inner[8:-1])
                         out.append(ph)
                         i = end_sym
                         continue

@@ -54,29 +54,35 @@ alias ltx='conda run --no-capture-output -n latex-preview latex-preview &'
 - Moteurs disponibles : pdflatex (par défaut, le plus rapide), lualatex, xelatex.
 - Le texte, le zoom, la taille de la fenêtre et les options sont conservés d'une session à l'autre.
 
-## Panneau SymPy (⌘K)
+## Panneau Traduction LaTeX ⇄ Python (⌘K)
 
-Le panneau à droite modifie le LaTeX avec SymPy. Par défaut, il agit sur **tout le texte**. Choisissez **« la sélection »** pour ne transformer que la partie sélectionnée dans l'éditeur : si le résultat est une somme, il est alors mis entre parenthèses. Le résultat remplace le texte d'origine, et **⌘Z** dans l'éditeur revient en arrière.
+Ce panneau fait le lien entre les équations écrites en LaTeX, par exemple transcrites depuis le tableau blanc, et vos scripts Python/SymPy. Il s'appuie sur un **modèle** : une table de correspondance exacte entre noms Python et écriture LaTeX. Il ne devine rien : tout symbole absent du modèle est **signalé** (⚠).
 
-- **SymPy a compris :** affiche comment SymPy lit l'expression, en notation Python (`*` pour un produit, `**` pour une puissance). Vérifiez cette ligne avant d'appliquer une opération.
-- **Opérations :** Simplifier, Développer, Factoriser, Réduire (même dénominateur), Évaluer (calcule les ∑, ∫ et d/dx écrits). Les opérations suivantes demandent une **variable** : Éléments simples, Regrouper, Dériver, Intégrer, Résoudre. Sur une équation, l'opération s'applique à chaque membre.
-- **Substitutions simultanées :** un tableau avec une ligne par remplacement, et les colonnes « Remplacer » et « par », en LaTeX. Toutes les lignes sont appliquées **en même temps**. Ainsi, X → Y et Y → X **échangent** X et Y, et XY devient YX, alors que deux remplacements successifs donneraient XX. Le bouton **⇄ Ajouter l'inverse** complète un échange. Les remplacements s'appliquent aussi **à l'intérieur des moments** : échanger `N_{A}^{1}` ↔ `N_{A}^{2}` transforme l'équation de d⟨(N_A^2)²⟩/dt en celle de d⟨(N_A^1)²⟩/dt. Autres exemples : `K` → `\frac{N^*}{2}`, ou `\frac{dN}{dt}` → `0` pour chercher les équilibres.
-- **Variable :** la liste propose les symboles de l'expression, et on peut aussi taper du LaTeX.
-- **Fonctions :** dans le LaTeX, `\lambda (n-1)` peut être un produit ou un appel de fonction. Par défaut, c'est un **produit**. Les noms listés dans ce champ (`f, g, h` par défaut) sont lus comme des fonctions. `P(n,t)`, qui a plusieurs arguments, et la notation de SymPy `N{\left(t \right)}` sont toujours lus comme des fonctions.
-- **Exposant après un indice = indice** (coché par défaut) : `N_{A}^{2}` et `r_{A}^{1}` sont des noms de variables, l'exposant servant d'indice (type, patch…). Une puissance s'écrit alors `(N_{A}^{2})^{2}`. Si vous décochez, `x_{i}^{2}` est lu comme le carré de x_i, ce qui est la convention de `sympy.latex`.
-- **Symboles réels positifs :** permet des simplifications comme √(x²) → x ou ln x + ln y → ln(xy). C'est adapté aux taux, effectifs et concentrations.
-- **Annuler :** un calcul trop long s'arrête de lui-même après 20 s, ou plus tôt avec le bouton Annuler.
+**LaTeX de l'éditeur → Python** (en direct)
+- Chaque équation de l'éditeur donne une ligne de code, par exemple :
+  `\frac{d}{dt} \langle (N_{A}^{x_1})^{2} \rangle = …` → `dM_A1_A1_dt = …`
+- Les moments sont nommés comme dans `moment_closure.py` : `n_A1`, `M_A1_A2`, `T_A1_A1_A2`, `Q_…`. Les variables sont triées dans l'ordre A1, A2, B1, B2. Les écritures équivalentes donnent le même nom : `\langle N_{A}^{x_2} N_{A}^{x_1} \rangle` → `M_A1_A2`.
+- Un système (`align`, plusieurs lignes `\\`, lignes de continuation `&\quad + …`) donne une ligne par équation.
+- Options :
+  - **Développer** donne le même format que `--print-eqs` ;
+  - **Remplacer par les définitions** remplace par exemple `r_A1` par `rmaxA - s*(x1 - thA)**2`.
+- **Copier le Python** pour le coller dans un script.
 
-Les éléments suivants sont gardés **tels quels** : ils sont traités comme des symboles, puis réécrits à l'identique :
-- les dérivées écrites en fraction (`\frac{\mathrm{d}N}{\mathrm{d}t}`, `\frac{\partial P(n,t)}{\partial t}`, `\frac{\partial^2 u}{\partial x^2}`) ;
-- les symboles décorés (`\bar{f}`, `\dot{x}`, `\mathbf{v}_i`, `\hat{p}`…), étoilés (`N^*`) ou primés (`x'`) ;
-- les **moments et espérances** `\langle N_{A}^{1} N_{B}^{2} \rangle`, chacun devenant une variable. Ils sont écrits sous une forme canonique, avec les facteurs triés et les puissances notées `(X)^{k}`. Ainsi, `\langle N_{A}^{2} N_{A}^{1} \rangle` et `\langle N_{A}^{1} N_{A}^{2} \rangle` sont reconnus comme le même moment ;
-- les symboles à indice composé, comme `r_{\max,A}` ;
-- les dérivées écrites sous forme d'opérateur, comme `\frac{d}{dt} \langle … \rangle`.
+**Python → LaTeX** (vers l'éditeur)
+- Collez une sortie de script, avec une ligne par équation, par exemple `dM_A1_A2/dt = …` ou `dM_A1_A2_dt = …`, puis cliquez sur **Convertir dans l'éditeur**. Le texte de l'éditeur est remplacé, et ⌘Z revient en arrière.
+- Plusieurs équations donnent un bloc par équation, et chacune est coupée à la largeur de la fenêtre.
+- **Regrouper par moment** met chaque moment en facteur. C'est plus lisible qu'une sortie développée.
+- L'aller-retour est exact : Python → LaTeX → Python redonne la même expression. C'est vérifié par les tests sur une sortie réelle de `moment_closure.py`.
 
-`e^{x}` est lu comme l'exponentielle.
-
-**Limites :** une seule équation ou expression à la fois (pas de `align` ni de `\\`). `cases` n'est pas compris par SymPy.
+**Le modèle** (bouton « Modifier le modèle… »)
+- C'est un petit fichier `.ini` lisible. Vous pouvez l'**enregistrer et le partager** avec l'équipe, et en **ouvrir** un autre pour un autre modèle.
+- Le modèle par défaut correspond à deux niches et deux phénotypes. Il contient :
+  - les variables `A1 = N_{A}^{x_1}`… ;
+  - les préfixes `n, M, T, Q` ;
+  - les paramètres `rmaxA = r_{\max,A}`, `thA = \theta_A`, `KA = K_A`, `r_A1 = r_{A}^{x_1}`… ;
+  - les définitions des `r_A1`….
+- Une même variable peut avoir plusieurs écritures, séparées par `|`. Par exemple, `N_{A}^{x_1} | N_{A}^{1}` reconnaît les deux notations, et la première sert pour l'affichage.
+- Un exposant sur un symbole du modèle est une puissance (`x_1^{2}` = x₁²). Un exposant qui fait partie d'un nom du modèle (`N_{A}^{x_1}`) est un indice.
 
 ## Dépannage
 
@@ -98,6 +104,10 @@ latex_preview/
     document.py    # analyse de l'extrait collé, construction du .tex
     compiler.py    # appel à TeX Live, analyse et traduction des erreurs
     pdf_tools.py   # recadrage, rendu, export (PyMuPDF)
+    pipeline.py    # chaîne complète, coupure des lignes longues
+    model.py       # modèle de correspondances noms Python ⇄ LaTeX (.ini)
+    translate.py   # traduction LaTeX ⇄ Python
+    sympy_ops.py   # lecture du LaTeX par SymPy (moments, indices, dérivées)
   ui/              # interface PySide6 (Qt)
   settings.py      # préférences persistantes
 ```
