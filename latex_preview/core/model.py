@@ -22,6 +22,7 @@ DEFAULT_MODEL = r"""# Modèle : une population, deux niches (A, B), deux phénot
 # Fichier partageable : copiez-le et adaptez-le pour un autre modèle.
 # Plusieurs écritures LaTeX sont possibles, séparées par « | » :
 # la première sert pour l'affichage, les autres sont aussi reconnues.
+# L'ordre exposant/indice ne compte pas : N_{A}^{x_1} reconnaît aussi N^{x_1}_{A}.
 
 [variables]
 # code = écriture LaTeX de la variable d'état (ordre = ordre de tri des moments)
@@ -85,6 +86,9 @@ def normalize_latex(s: str) -> str:
     while prev != s:
         prev = s
         s = re.sub(r"([_^])\{(\\[A-Za-z]+|[A-Za-z0-9])\}", r"\1\2", s)
+    # L'ordre exposant/indice ne compte pas : N^1_A est écrit N_A^1.
+    grp = r"(\{(?:[^{}]|\{[^{}]*\})*\}|\\[A-Za-z]+|[A-Za-z0-9*])"
+    s = re.sub(r"\^" + grp + r"_" + grp, r"_\2^\1", s)
     return s
 
 

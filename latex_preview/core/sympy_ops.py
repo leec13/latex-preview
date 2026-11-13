@@ -79,6 +79,18 @@ def _read_subscript(s: str, i: int) -> int:
     return i
 
 
+def _read_superscript(s: str, i: int) -> int:
+    """Si s[i:] commence par un exposant ^x ou ^{...}, retourne sa fin, sinon i."""
+    if i < len(s) and s[i] == "^":
+        if i + 1 < len(s) and s[i + 1] == "{":
+            g = _read_group(s, i + 1)
+            return g[1] if g else i
+        m = re.match(r"\^(\\[A-Za-z]+|[A-Za-z0-9])", s[i:])
+        if m:
+            return i + m.end()
+    return i
+
+
 def _placeholder_name(n: int) -> str:
     letters = string.ascii_lowercase
     out = ""
@@ -259,6 +271,13 @@ def _indexed_symbol_end(s: str, i: int, ctx: Context) -> int | None:
     j = i + m.end()
     k = _read_subscript(s, j)
     if k == j:
+        # Exposant AVANT l'indice : N^{1}_{A} (même variable que N_{A}^{1}).
+        if ctx.sup_index and s[j:j + 1] == "^":
+            sup_end = _read_superscript(s, j)
+            if sup_end != j:
+                k2 = _read_subscript(s, sup_end)
+                if k2 != sup_end:
+                    return k2
         return None
     sub = s[j + 1:k]
     sub = sub[1:-1] if sub.startswith("{") else sub

@@ -1,5 +1,11 @@
 # Historique des versions
 
+## v0.7.1 — 2026-11-13
+- Traduction : l'ordre exposant/indice ne compte plus (`N^{1}_{A}` = `N_{A}^{1}`). Avant,
+  `N^{1}_{A}` était lu comme une puissance de N, et l'équation était traduite faussement
+  (`\langle N^{1}_{A}N^{2}_{A}\rangle` → `langleN3rangle`). Cela vaut pour toutes les variables
+  et tous les paramètres (`r^{1}_{A}` = `r_{A}^{1}`), et pour les puissances (`x^{2}_{1}` = x₁²).
+
 ## v0.7.0 — 2026-11-13
 - **Copier pour Overleaf** (⇧⌘L, barre d'outils, menu Fichier) : copie le LaTeX avec coupure
   automatique des lignes (breqn), exactement le corps compilé par l'aperçu ; équations non
