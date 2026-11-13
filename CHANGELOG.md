@@ -1,5 +1,13 @@
 # Historique des versions
 
+## v0.7.3 — 2026-11-13
+- **Correction d'une erreur de calcul** : `s(x_1 - \theta_A)^2` était traduit (s·(x−θ))²
+  → `s**2*(…)**2` ; c'est maintenant `s*(-thA + x1)**2`. Idem dans un dénominateur
+  (`\frac{1}{s(…)^2}`). Une division reste appliquée à tout le produit (`\frac{1}{x(x+1)}`).
+- Un exposant seul servant d'indice est reconnu s'il est déclaré dans le modèle
+  (`x^{1}` = `x_1`) ; modèle par défaut : `x1 = x_1 | x_{1} | x^{1}` (idem x2).
+- Une écriture déclarée ne coupe jamais un symbole au milieu (`x^{2}_{1}` = x₁²).
+
 ## v0.7.2 — 2026-11-13
 - Traduction : les synonymes de plusieurs lettres déclarés dans le modèle (`rmax_{A}`, `Kcap`…)
   sont reconnus ; avant, ils étaient découpés lettre par lettre avant la consultation du

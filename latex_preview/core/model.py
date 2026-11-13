@@ -44,8 +44,8 @@ variable = N{code}
 [parametres]
 m = m
 s = s
-x1 = x_1 | x_{1}
-x2 = x_2 | x_{2}
+x1 = x_1 | x_{1} | x^{1}
+x2 = x_2 | x_{2} | x^{2}
 thA = \theta_A | \theta_{A}
 thB = \theta_B | \theta_{B}
 rmaxA = r_{\max,A} | r_{\max A} | r_{max,A} | rmax_{A}

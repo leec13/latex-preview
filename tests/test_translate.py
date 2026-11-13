@@ -166,3 +166,22 @@ def test_synonyme_mot_de_plusieurs_lettres():
 def test_mot_non_declare_reste_un_produit():
     assert ok(r"ab", MOD)["python"] == "a*b"
     assert ok(r"rmax_{C}", MOD)["python"] == "a*m*r*xC"          # rmax_{C} n'est pas déclaré
+
+
+# --- signalé le 13/11 : s(x^1 - \theta_A)^2 ---------------------------------
+def test_puissance_sur_la_parenthese_seulement():
+    """s(x−θ)² = s·(x−θ)², pas (s·(x−θ))² (le parseur applique le carré à « l'appel » s(…))."""
+    assert ok(r"s(x_1 - \theta_A)^2", MOD)["python"] == "s*(-thA + x1)**2"
+    assert ok(r"s\left(x_1 - \theta_A\right)^{2}", MOD)["python"] == "s*(-thA + x1)**2"
+    assert ok(r"\frac{1}{s(x_1-\theta_A)^2}", MOD)["python"] == "1/(s*(-thA + x1)**2)"
+    assert ok(r"\frac{a}{b(c+d)^{3}}", MOD)["python"] == "a/(b*(c + d)**3)"
+    assert ok(r"\frac{1}{x(x+1)}", MOD)["python"] == "1/(x*(x + 1))"      # division : tout le produit
+
+
+def test_exposant_seul_declare_comme_indice():
+    """x^{1} déclaré dans le modèle (x1 = x_1 | x^{1}) : c'est x_1, pas x puissance 1."""
+    r = ok(r"\frac{s(x^1 - \theta_A)^2}{K_{A}}", MOD)
+    assert r["python"] == "s*(-thA + x1)**2/KA" and r["auto_names"] == []
+    assert ok(r"x^{2}", MOD)["python"] == "x2"
+    assert ok(r"y^{2}", MOD)["python"] == "y**2"                       # non déclaré : puissance
+    assert ok(r"x^{2}_{1}", MOD)["python"] == "x1**2"                  # pas coupé après x^{2}
