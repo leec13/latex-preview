@@ -80,15 +80,18 @@ def _read_subscript(s: str, i: int) -> int:
 
 
 def _declared_word_end(s: str, i: int, ctx: Context) -> int | None:
-    """Fin d'un mot de 2 lettres ou plus (avec indice/exposant éventuels) déclaré dans le
-    modèle ; la forme la plus longue l'emporte. None sinon."""
+    """Fin d'un mot (avec indice/exposant éventuels) dont l'écriture est déclarée dans le
+    modèle : rmax_{A}, x^{1}… La forme la plus longue l'emporte. None sinon."""
     from .model import normalize_latex
 
-    m = re.match(r"[A-Za-z]{2,}", s[i:])
+    m = re.match(r"[A-Za-z]+|\\" + _GREEK + r"(?![A-Za-z])", s[i:])
     if not m:
         return None
     w = i + m.end()
-    ends = [w]
+    # Une seule lettre (ou lettre grecque) n'est retenue qu'avec son indice/exposant
+    # déclaré (x^{1} = x_1 si le modèle le dit) ; seule, elle reste un symbole ordinaire.
+    single = len(m.group(0)) == 1 or m.group(0).startswith("\\")
+    ends = [] if single else [w]
     a = _read_subscript(s, w)
     if a != w:
         ends.append(a)
@@ -102,6 +105,8 @@ def _declared_word_end(s: str, i: int, ctx: Context) -> int | None:
         if b != a:
             ends.append(b)
     for end in sorted(set(ends), reverse=True):
+        if s[end:end + 1] in ("_", "^"):
+            continue  # ne jamais couper un symbole au milieu (x^{2}_{1} n'est pas x^{2} puis _{1})
         if normalize_latex(s[i:end]) in ctx.declared:
             return end
     return None
@@ -394,8 +399,8 @@ def _protect(s: str, ctx: Context) -> str:
                         out.append(ph)
                         i = end_sym
                         continue
-        # Mot de plusieurs lettres déclaré dans le modèle (rmax_{A}, Kcap…) : un seul symbole,
-        # au lieu du produit lettre par lettre r·m·a·x_A.
+        # Écriture déclarée dans le modèle (rmax_{A}, Kcap, x^{1}…) : un seul symbole, au lieu
+        # du produit r·m·a·x_A ou de la puissance x¹.
         if ctx.declared and (i == 0 or not (s[i - 1].isalpha() or s[i - 1] == "\\")):
             end_w = _declared_word_end(s, i, ctx)
             if end_w is not None:
@@ -542,7 +547,6 @@ def parse(text: str, ctx: Context):
     if _top_level_equal(src) and not isinstance(expr, sp.Equality):
         raise SympyLatexError("SymPy n'a lu qu'une partie de l'expression (avant le « = ») : "
                               "vérifiez l'écriture autour de cet endroit.")
-    expr = _evaluate_arithmetic(expr)
     funcs = ctx.functions
     # Ce qui est dérivé (d/dt N(t)) est une fonction, même à un argument.
     for d in expr.atoms(sp.Derivative):
@@ -575,11 +579,27 @@ def parse(text: str, ctx: Context):
         name = e.func.__name__
         return sp.Symbol(ctx.head_atom(name) or name) * e.args[0]
 
+    # s(x - θ)^2 : le parseur applique la puissance à « l'appel » s(…). Pour un produit,
+    # la puissance ne porte que sur la parenthèse : s·(x − θ)², pas (s·(x − θ))².
+    def is_pow_of_fake_call(e):
+        # Seulement un exposant écrit (positif) : 1/(x(x+1)) donne une puissance −1 qui
+        # porte, elle, sur tout le produit.
+        return isinstance(e, sp.Pow) and is_fake_call(e.base) and not e.exp.is_negative
+
+    def pow_as_product(e):
+        name = e.base.func.__name__
+        return sp.Symbol(ctx.head_atom(name) or name) * e.base.args[0] ** e.exp
+
     for _ in range(10):
-        new = expr.replace(is_fake_call, as_product)
+        new = expr.replace(is_pow_of_fake_call, pow_as_product)
+        new = new.replace(is_fake_call, as_product)
         if new == expr:
             break
         expr = new
+
+    # Simplification arithmétique APRÈS la conversion des faux appels : avant, la structure
+    # écrite est intacte (dans 1/(s(x-θ)^2), le carré et la division sont encore distincts).
+    expr = _evaluate_arithmetic(expr)
 
     # Hors intégrale, « d x » n'est pas une différentielle : d·x.
     if not expr.has(sp.Integral):
