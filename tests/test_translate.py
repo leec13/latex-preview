@@ -152,3 +152,17 @@ def test_ordre_exposant_indice_indifferent():
         assert ok(t, MOD)["python"] == "M_A1_A2", t
     assert ok(r"r^{1}_{A}", MOD)["python"] == "r_A1"
     assert ok(r"x^{2}_{1} + x_1^{2}", MOD)["python"] == "2*x1**2"   # carré de x_1, dans les deux ordres
+
+
+# --- synonymes de plusieurs lettres (rmax_{A}), signalé le 13/11 -------------
+def test_synonyme_mot_de_plusieurs_lettres():
+    assert ok(r"rmax_{A}", MOD)["python"] == "rmaxA"          # synonyme du modèle par défaut
+    assert ok(r"rmax_A + rmax_{B}", MOD)["python"] == "rmaxA + rmaxB"
+    assert ok(r"2\, rmax_{A} N_{A}^{x_1}", MOD)["python"] == "2*NA1*rmaxA"
+    mod = MOD.replace("t = t\n", "t = t\nKcap = Kcap | \\mathrm{Kcap}\n")
+    assert ok(r"\frac{x}{Kcap}", mod)["python"] == "x/Kcap"
+
+
+def test_mot_non_declare_reste_un_produit():
+    assert ok(r"ab", MOD)["python"] == "a*b"
+    assert ok(r"rmax_{C}", MOD)["python"] == "a*m*r*xC"          # rmax_{C} n'est pas déclaré

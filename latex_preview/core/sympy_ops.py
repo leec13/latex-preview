@@ -79,6 +79,34 @@ def _read_subscript(s: str, i: int) -> int:
     return i
 
 
+def _declared_word_end(s: str, i: int, ctx: Context) -> int | None:
+    """Fin d'un mot de 2 lettres ou plus (avec indice/exposant éventuels) déclaré dans le
+    modèle ; la forme la plus longue l'emporte. None sinon."""
+    from .model import normalize_latex
+
+    m = re.match(r"[A-Za-z]{2,}", s[i:])
+    if not m:
+        return None
+    w = i + m.end()
+    ends = [w]
+    a = _read_subscript(s, w)
+    if a != w:
+        ends.append(a)
+        b = _read_superscript(s, a)
+        if b != a:
+            ends.append(b)
+    a = _read_superscript(s, w)
+    if a != w:
+        ends.append(a)
+        b = _read_subscript(s, a)
+        if b != a:
+            ends.append(b)
+    for end in sorted(set(ends), reverse=True):
+        if normalize_latex(s[i:end]) in ctx.declared:
+            return end
+    return None
+
+
 def _read_superscript(s: str, i: int) -> int:
     """Si s[i:] commence par un exposant ^x ou ^{...}, retourne sa fin, sinon i."""
     if i < len(s) and s[i] == "^":
@@ -111,6 +139,7 @@ class Context:
     sup_index: bool = True   # N_{A}^{2} : l'exposant fait partie du nom (indice)
     function_latex: set[str] = field(default_factory=set)  # LaTeX normalisé des fonctions
     call_heads: dict[str, tuple[str, bool]] = field(default_factory=dict)  # « 907 » -> (nom, \left ?)
+    declared: set[str] = field(default_factory=set)  # LaTeX normalisé déclaré dans le modèle
     moments: dict[str, object] = field(default_factory=dict)   # nom -> monôme SymPy
     derivs: dict[str, tuple[str, str]] = field(default_factory=dict)  # nom -> (préfixe, moment)
 
@@ -365,6 +394,14 @@ def _protect(s: str, ctx: Context) -> str:
                         out.append(ph)
                         i = end_sym
                         continue
+        # Mot de plusieurs lettres déclaré dans le modèle (rmax_{A}, Kcap…) : un seul symbole,
+        # au lieu du produit lettre par lettre r·m·a·x_A.
+        if ctx.declared and (i == 0 or not (s[i - 1].isalpha() or s[i - 1] == "\\")):
+            end_w = _declared_word_end(s, i, ctx)
+            if end_w is not None:
+                out.append(_callable(ctx.atom(s[i:end_w]), s, end_w, ctx))
+                i = end_w
+                continue
         # Symbole à indice complexe (r_{\max,A}) ou exposant d'indice (N_{A}^{2}).
         if i == 0 or not (s[i - 1].isalpha() or s[i - 1] == "\\"):
             end_idx = _indexed_symbol_end(s, i, ctx)

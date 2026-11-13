@@ -1,5 +1,11 @@
 # Historique des versions
 
+## v0.7.2 — 2026-11-13
+- Traduction : les synonymes de plusieurs lettres déclarés dans le modèle (`rmax_{A}`, `Kcap`…)
+  sont reconnus ; avant, ils étaient découpés lettre par lettre avant la consultation du
+  modèle (`rmax_{A}` → `a*m*r*xA`). Un mot non déclaré reste un produit de lettres.
+- Modèle par défaut : `rmax_{A}` et `rmax_{B}` ajoutés comme synonymes de `rmaxA`, `rmaxB`.
+
 ## v0.7.1 — 2026-11-13
 - Traduction : l'ordre exposant/indice ne compte plus (`N^{1}_{A}` = `N_{A}^{1}`). Avant,
   `N^{1}_{A}` était lu comme une puissance de N, et l'équation était traduite faussement

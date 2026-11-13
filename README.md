@@ -107,6 +107,8 @@ Chaque équation de l'éditeur est traduite en une ligne de code Python, en dire
 - **Options** :
   - **Développer** donne le même format que `--print-eqs` ;
   - **Remplacer par les définitions** remplace par exemple `r_A1` par `rmaxA - s*(x1 - thA)**2`.
+- **Ajouter un synonyme** : dans le panneau Traduction, « Modifier le modèle… », ajoutez l'écriture au bout de la ligne voulue, séparée par `|`, par exemple `rmaxA = r_{\max,A} | rmax_{A}`, puis OK. C'est pris en compte aussitôt, sans redémarrer. Le modèle est enregistré dans les préférences de l'application. Pour le partager, utilisez « Enregistrer sous… ». Ne modifiez pas `model.py` : cette copie ne sert que de modèle par défaut.
+- **Les mots de plusieurs lettres** (`rmax_{A}`, `Kcap`) sont reconnus comme un seul nom **s'ils sont déclarés** dans le modèle. Sinon, `ab` reste le produit a·b.
 - **L'ordre exposant/indice ne compte pas** : `N^{1}_{A}` et `N_{A}^{1}` désignent la même variable, et `\langle N^{1}_{A}N^{2}_{A}\rangle` donne `M_A1_A2`. Il n'y a pas de moments à déclarer : ils découlent des variables du modèle.
 - **Le modèle** est un fichier `.ini` lisible, qu'on modifie avec « Modifier le modèle… ». On peut l'enregistrer, le partager et en ouvrir un autre. Une variable peut avoir plusieurs écritures, séparées par `|` (`N_{A}^{x_1} | N_{A}^{1}`), et la première sert pour l'affichage.
 - **Rien n'est traduit tant que le LaTeX ne compile pas.** Le panneau affiche alors « Le LaTeX ne compile pas : corrigez d'abord l'erreur ». La traduction suit chaque compilation réussie de l'aperçu.

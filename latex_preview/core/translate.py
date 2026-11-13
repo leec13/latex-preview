@@ -185,7 +185,8 @@ def latex_to_python(text: str, model_text: str, expand: bool = False,
         if not pieces:
             return {"ok": True, "python": "", "auto_names": [], "warnings": [], "error": "", "count": 0}
         for k, piece in enumerate(pieces, 1):
-            ctx = Context(sup_index=True, function_latex=model.function_latex_keys)
+            ctx = Context(sup_index=True, function_latex=model.function_latex_keys,
+                          declared=model.declared_latex)
             try:
                 expr = parse(piece, ctx)
             except SympyLatexError as exc:
