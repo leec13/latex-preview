@@ -48,8 +48,8 @@ x1 = x_1 | x_{1}
 x2 = x_2 | x_{2}
 thA = \theta_A | \theta_{A}
 thB = \theta_B | \theta_{B}
-rmaxA = r_{\max,A} | r_{\max A} | r_{max,A}
-rmaxB = r_{\max,B} | r_{\max B} | r_{max,B}
+rmaxA = r_{\max,A} | r_{\max A} | r_{max,A} | rmax_{A}
+rmaxB = r_{\max,B} | r_{\max B} | r_{max,B} | rmax_{B}
 KA = K_A | K_{A}
 KB = K_B | K_{B}
 r_A1 = r_{A}^{x_1} | r_{A}^{1}
@@ -139,6 +139,11 @@ class Model:
     @property
     def function_latex_keys(self) -> set[str]:
         return set(self._latex_to_function)
+
+    @property
+    def declared_latex(self) -> set[str]:
+        """Toutes les écritures déclarées (variables, paramètres, fonctions), normalisées."""
+        return set(self._latex_to_var) | set(self._latex_to_param) | set(self._latex_to_function)
 
     def prefix(self, order: int) -> str:
         return self.prefixes[order - 1] if order <= len(self.prefixes) else f"X{order}"
