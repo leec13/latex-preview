@@ -135,3 +135,20 @@ def test_fonctions_et_produits():
 def test_valide_6_erreur_sans_traduction_partielle():
     r = L2P(r"\frac{d}{dt}\langle N_{A}^{x_1}\rangle = \frac{2}{K_A", MOD)
     assert not r["ok"] and r["python"] == "" and "Accolade" in r["error"]
+
+
+# --- exposant avant l'indice : N^{1}_{A} (exemple de l'utilisateur, 13/11) --
+def test_exposant_avant_indice_equation_utilisateur():
+    r = ok((HERE / "exemple_exposant_avant_indice.tex").read_text(), MOD)
+    assert r["auto_names"] == [] and r["warnings"] == []
+    assert r["python"] == ("dM_A1_A1_dt = m*(-2*M_A1_A1 + 2*M_A1_B1 + n_A1 + n_B1) + rmaxA*(2*M_A1_A1 + n_A1) "
+                           "+ r_A1*(-6*M_A1_A1*n_A1 - 2*M_A1_A1*n_A2 + M_A1_A1 - 4*M_A1_A2*n_A1 + M_A1_A2 "
+                           "+ 4*n_A1**3 + 4*n_A1**2*n_A2)/KA")
+
+
+def test_ordre_exposant_indice_indifferent():
+    for t in (r"\langle N^{1}_{A} N^{2}_{A}\rangle", r"\langle N_{A}^{1} N_{A}^{2}\rangle",
+              r"\langle N^{x_2}_{A} N^{x_1}_{A}\rangle", r"\langle N_A^{x_1}N_A^{x_2}\rangle"):
+        assert ok(t, MOD)["python"] == "M_A1_A2", t
+    assert ok(r"r^{1}_{A}", MOD)["python"] == "r_A1"
+    assert ok(r"x^{2}_{1} + x_1^{2}", MOD)["python"] == "2*x1**2"   # carré de x_1, dans les deux ordres

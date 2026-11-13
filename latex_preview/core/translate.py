@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 
-from .model import Model, ModelError, parse_model
+from .model import Model, ModelError, normalize_latex, parse_model
 from .sympy_ops import Context, SympyLatexError, parse
 
 _ENVS = ("equation", "align", "gather", "multline", "flalign", "alignat", "eqnarray",
@@ -122,7 +122,7 @@ def _python_names(expr, ctx: Context, model: Model, namer: AutoNamer) -> dict:
             continue
         latex = ctx.latex_of(sym)
         # x_1^{2} hors modèle mais x_1 dans le modèle : c'est un carré, pas un nom.
-        m = re.fullmatch(r"(.+?)\^\{?\s*(\d+)\s*\}?", latex)
+        m = re.fullmatch(r"(.+?)\^\{?\s*(\d+)\s*\}?", normalize_latex(latex))
         if m:
             base = model.var_of_latex(m.group(1))
             base = model.variable_format.format(code=base) if base else model.param_of_latex(m.group(1))
