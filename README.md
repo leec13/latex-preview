@@ -54,6 +54,23 @@ alias ltx='conda run --no-capture-output -n latex-preview latex-preview &'
 - Moteurs disponibles : pdflatex (par défaut, le plus rapide), lualatex, xelatex.
 - Le texte, le zoom, la taille de la fenêtre et les options sont conservés d'une session à l'autre.
 
+## Copier pour Overleaf (⇧⌘L)
+
+Ce bouton copie le LaTeX **avec la coupure automatique des lignes**, prêt à coller dans Overleaf. C'est exactement le code que compile l'aperçu, sans le préambule :
+```latex
+\begin{dmath*}
+\frac{d}{d t} \langle (N_{A}^{2})^{2} \rangle = …
+\end{dmath*}
+```
+- **Dans le préambule du document Overleaf**, ajoutez une fois `\usepackage{breqn}`, **après** `amsmath`. Le rappel s'affiche dans la barre d'état.
+- Dans l'article, breqn coupe à **la largeur réelle de la page**, en une colonne comme en deux. Les coupures peuvent donc différer de celles de la fenêtre d'aperçu, et c'est voulu.
+- **Équations non numérotées** (`dmath*`) par défaut. Une équation que vous avez numérotée vous-même (`\begin{equation}`) le reste (`dmath`).
+- **Une équation que vous avez déjà structurée** (`&`, `\\`) est copiée telle quelle, dans `align*` ou `gather*`, sans breqn.
+- **Rien n'est copié si le LaTeX ne compile pas.**
+- Les macros personnelles du préambule de l'aperçu ne sont pas copiées.
+- Avec LyX, collez le bloc dans une boîte de code TeX. L'éditeur de formules de LyX ne connaît pas `dmath`.
+- breqn peut entrer en conflit avec certains packages ou certaines classes de revue. Un export en LaTeX standard (`aligned`) est prévu en réserve si besoin.
+
 ## Erreurs : corrections proposées et conseils
 
 **Quand le texte ne compile pas**, l'outil cherche une correction vraisemblable et **ne la propose que si le texte corrigé compile vraiment**. L'aperçu montre alors le rendu corrigé avec un **liseré orange**, et la correction est décrite dans un **bandeau orange** juste sous l'aperçu. **Appliquer**, ou **⌘⇧↵**, modifie le texte, et ⌘Z revient en arrière. Rien ne change sans ce clic. Sans correction possible, l'aperçu garde le dernier rendu valide en grisé.

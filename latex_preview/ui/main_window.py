@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..core.compiler import ENGINES, TexCompiler, find_engine
+from ..core.document import overleaf_export
 from ..core.pdf_tools import CroppedPdf, export_pdf, export_png
 from ..core.pipeline import RenderOutcome, render_snippet
 from ..settings import Settings
@@ -170,6 +171,9 @@ class MainWindow(QMainWindow):
         self.addAction(self.a_apply_fix)  # raccourci actif même depuis l'éditeur
         self.a_paste_replace = self._act("Coller en remplaçant", self.paste_replace, "Ctrl+Shift+V",
                                          "Remplacer tout le texte par le presse-papiers (⇧⌘V)")
+        self.a_overleaf = self._act("Copier pour Overleaf", self.copy_for_overleaf, "Ctrl+Shift+L",
+                                    "Copier le LaTeX avec coupure automatique des lignes (breqn), "
+                                    "à coller dans Overleaf (⇧⌘L)")
         self.a_copy_img = self._act("Copier l'image", self.copy_image, "Ctrl+Shift+C",
                                     "Copier le rendu dans le presse-papiers (⇧⌘C)")
         self.a_pdf = self._act("Exporter PDF…", self.export_pdf, "Ctrl+E",
@@ -228,6 +232,7 @@ class MainWindow(QMainWindow):
         tb.addAction(self.a_zoom_in)
         tb.addAction(self.a_fit)
         tb.addSeparator()
+        tb.addAction(self.a_overleaf)
         tb.addAction(self.a_copy_img)
         tb.addAction(self.a_pdf)
         tb.addAction(self.a_png)
@@ -242,7 +247,8 @@ class MainWindow(QMainWindow):
     def _build_menus(self) -> None:
         mb = self.menuBar()
         m = mb.addMenu("Fichier")
-        for a in (self.a_open, self.a_save, None, self.a_pdf, self.a_png, self.a_copy_img, None, self.a_quit):
+        for a in (self.a_open, self.a_save, None, self.a_overleaf, self.a_pdf, self.a_png, self.a_copy_img,
+                  None, self.a_quit):
             m.addSeparator() if a is None else m.addAction(a)
         m = mb.addMenu("Édition")
         m.addAction(self.a_paste_replace)
@@ -370,6 +376,7 @@ class MainWindow(QMainWindow):
         out, job = outcome.render, outcome.job
         self._last_log = out.result.log
         self._fix = (job.text, out.fix) if out.fix else None
+        self._last_compiled = (job.text, out.result.ok)
         self.translate_panel.on_compiled(job.text, out.result.ok)
         self._show_advice(job.text, out.advice or [])
         if out.result.ok:
@@ -520,6 +527,29 @@ class MainWindow(QMainWindow):
         if path:
             self.s.set("last_dir", os.path.dirname(path))
         return path or None
+
+    def copy_for_overleaf(self) -> None:
+        text = self.editor.toPlainText()
+        if not text.strip():
+            self.statusBar().showMessage("L'éditeur est vide.", 4000)
+            return
+        last = getattr(self, "_last_compiled", None)
+        if last is None or last[0] != text:
+            self.statusBar().showMessage("Le texte n'est pas encore compilé : actualisez d'abord (⌘↵).", 5000)
+            return
+        if not last[1]:
+            self.statusBar().showMessage("Le LaTeX ne compile pas : corrigez d'abord l'erreur.", 5000)
+            return
+        exported = overleaf_export(text)
+        if exported is None:
+            self.statusBar().showMessage("Document complet : copiez-le tel quel, il n'y a rien à convertir.", 5000)
+            return
+        code, needs_breqn = exported
+        QApplication.clipboard().setText(code)
+        msg = "Copié pour Overleaf."
+        if needs_breqn:
+            msg += " Ajoutez \\usepackage{breqn} au préambule, après amsmath."
+        self.statusBar().showMessage(msg, 8000)
 
     def copy_image(self) -> None:
         c = self._require_render()

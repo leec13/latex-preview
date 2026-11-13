@@ -1,5 +1,11 @@
 # Historique des versions
 
+## v0.7.0 — 2026-11-13
+- **Copier pour Overleaf** (⇧⌘L, barre d'outils, menu Fichier) : copie le LaTeX avec coupure
+  automatique des lignes (breqn), exactement le corps compilé par l'aperçu ; équations non
+  numérotées (`dmath*`) ; rappel `\usepackage{breqn}` ; rien n'est copié si le LaTeX ne
+  compile pas. Validé avec l'utilisateur ; export `aligned` réservé pour plus tard.
+
 ## v0.6.1 — 2026-11-12
 - Commandes mal orthographiées : plusieurs fautes dans le même texte (`\fracc{1}{2} \lamda + 1
   \langel x \rangle`) sont corrigées ensemble ; avant, aucune correction isolée ne compilait

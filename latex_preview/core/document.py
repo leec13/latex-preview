@@ -205,6 +205,7 @@ def build_document(
     if mode == "math":
         env = _math_env(body, auto_break)
         broken = env == "dmath*"
+        body = body.strip(" \t")  # espaces superflus (pas les retours à la ligne : numéros de ligne)
         content = f"\\begin{{{env}}}\n{body}\n\\end{{{env}}}"
         open_lines = 1  # ligne \begin{env}
     else:
@@ -227,3 +228,20 @@ def build_document(
         user_text=snippet,
         broken=broken,
     )
+
+
+def overleaf_export(snippet: str) -> tuple[str, bool] | None:
+    """LaTeX à coller dans Overleaf : exactement le corps que l'aperçu compile avec
+    la coupure des lignes (breqn), sans le préambule.
+
+    Validé avec l'utilisateur (13/11/2026) : export breqn par défaut, équations non
+    numérotées (dmath*). Une équation que l'utilisateur a lui-même numérotée
+    (\\begin{equation}) reste numérotée (dmath).
+
+    Retourne (code, breqn nécessaire ?) ; None pour un document complet."""
+    doc = build_document(snippet, auto_break=True)
+    if doc.mode == "full":
+        return None
+    start = doc.source.index("\\begin{document}\n") + len("\\begin{document}\n")
+    end = doc.source.rindex("\n\\end{document}")
+    return doc.source[start:end].strip("\n"), doc.broken
