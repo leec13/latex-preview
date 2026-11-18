@@ -49,6 +49,9 @@ def split_equations(text: str) -> list[str]:
 def auto_name(latex: str) -> str:
     """Nom Python automatique pour un symbole hors modèle (validé avec l'utilisateur) :
     N_{1} → N1, r_{1} → r1, \\delta → delta, x_{i,j} → xij, \\theta_{12} → theta12."""
+    m = re.fullmatch(r"\s*\\langle(.*)\\rangle\s*", latex, re.S)
+    if m:  # moment contenant un symbole hors modèle : ⟨z N_A^1⟩ → E_zNA1
+        return "E_" + auto_name(m.group(1))
     s = re.sub(r"\\(?:mathrm|mathit|operatorname|text|mathbf|bm|boldsymbol)\{([^{}]*)\}", r"\1", latex)
     s = re.sub(r"\^\{?\s*(\*|\\star|\\ast)\s*\}?", "star", s)
     s = s.replace("'", "prime")
@@ -186,7 +189,8 @@ def latex_to_python(text: str, model_text: str, expand: bool = False,
             return {"ok": True, "python": "", "auto_names": [], "warnings": [], "error": "", "count": 0}
         for k, piece in enumerate(pieces, 1):
             ctx = Context(sup_index=True, function_latex=model.function_latex_keys,
-                          declared=model.declared_latex)
+                          declared=model.declared_latex, variable_latex=model.variable_latex_keys,
+                          known_latex=model.known_latex_keys)
             try:
                 expr = parse(piece, ctx)
             except SympyLatexError as exc:

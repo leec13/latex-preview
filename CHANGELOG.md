@@ -1,5 +1,12 @@
 # Historique des versions
 
+## v0.8.0 — 2026-11-18
+- Traduction : **linéarité de la moyenne** (validé avec l'utilisateur). ⟨a + b⟩ = ⟨a⟩ + ⟨b⟩ ;
+  les paramètres du modèle sortent de ⟨⟩, les variables d'état y restent ; un symbole hors
+  modèle reste sous ⟨⟩ tel qu'écrit (`\langle z N \rangle` → nom automatique `E_…`). Les
+  coefficients ne sont pas développés (s(x−θ)² reste tel quel). Permet de traduire les
+  étapes intermédiaires d'un calcul, comme ⟨(s(x−θ)² + N_tot/K) N⟩.
+
 ## v0.7.4 — 2026-11-18
 - Traduction : copier-coller depuis LyX. `\left[ … \right]` (et `\{ \}`, `| |`) faisait
   s'arrêter le parseur en silence — traduction tronquée sans avertissement ; `\displaystyle`

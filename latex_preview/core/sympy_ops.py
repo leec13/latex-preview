@@ -145,6 +145,8 @@ class Context:
     function_latex: set[str] = field(default_factory=set)  # LaTeX normalisé des fonctions
     call_heads: dict[str, tuple[str, bool]] = field(default_factory=dict)  # « 907 » -> (nom, \left ?)
     declared: set[str] = field(default_factory=set)  # LaTeX normalisé déclaré dans le modèle
+    variable_latex: set[str] = field(default_factory=set)  # variables d'état (restent sous ⟨⟩)
+    known_latex: set[str] = field(default_factory=set)     # paramètres du modèle (sortent de ⟨⟩)
     moments: dict[str, object] = field(default_factory=dict)   # nom -> monôme SymPy
     derivs: dict[str, tuple[str, str]] = field(default_factory=dict)  # nom -> (préfixe, moment)
 
@@ -265,12 +267,92 @@ def _moment_atom(text: str, ctx: Context) -> str:
         inner = parse(_moment_inner(text), ctx)
     except SympyLatexError:
         inner = None
+    if inner is not None and ctx.variable_latex and not _only_variables(inner, ctx):
+        return _linear_moment(inner, ctx)
     canon = moment_latex(inner, ctx) if inner is not None else None
     if canon is None:
         return ctx.atom(text)
     ph = ctx.atom(canon)
     ctx.moments[ph[len(r"\mathit{"):-1]] = inner
     return ph
+
+
+def _var_kind(sym, ctx: Context) -> str:
+    from .model import normalize_latex
+    lat = normalize_latex(ctx.latex_of(sym))
+    if lat in ctx.variable_latex:
+        return "var"
+    return "known" if lat in ctx.known_latex else "unknown"
+
+
+def _only_variables(expr, ctx: Context) -> bool:
+    """Monôme de variables d'état seulement (⟨N_A^1 N_B^2⟩) : moment ordinaire."""
+    sp = _sympy()
+    return (isinstance(expr, (sp.Symbol, sp.Pow, sp.Mul))
+            and all(_var_kind(x, ctx) == "var" for x in expr.free_symbols)
+            and moment_latex(expr, ctx) is not None)
+
+
+def _linear_moment(inner, ctx: Context) -> str:
+    """Linéarité de la moyenne (validé le 18/11) : ⟨a + b⟩ = ⟨a⟩ + ⟨b⟩ ; les paramètres du
+    modèle sortent de la moyenne, les variables d'état y restent ; un symbole HORS modèle
+    reste sous la moyenne, comme écrit (⟨z N⟩ reste un seul moment opaque).
+
+    Retourne du LaTeX (avec symboles opaques) qui remplace le moment dans le texte."""
+    sp = _sympy()
+
+    def kind(sym):
+        return _var_kind(sym, ctx)
+
+    # On ne distribue que sur les variables : les sous-expressions faites seulement de
+    # paramètres du modèle (s(x_1-θ_A)^2, 1/K_A…) sont gelées, pour rester telles qu'écrites.
+    frozen = {}
+
+    def freeze(e):
+        syms = e.free_symbols
+        if syms and all(kind(x) == "known" for x in syms) and not isinstance(e, sp.Symbol):
+            d = sp.Dummy()
+            frozen[d] = e
+            return d
+        if not e.args:
+            return e
+        return e.func(*[freeze(a) for a in e.args])
+
+    def latex_names(expr):
+        names = {}
+        for sym in expr.free_symbols:
+            names[sym] = (r"\mathit{" + sym.name + "}") if sym.name in ctx.atom_latex \
+                else ctx.latex_of(sym)
+        return names
+
+    total = sp.Integer(0)
+    for term in sp.Add.make_args(sp.expand(freeze(inner))):
+        coef, inside = sp.Integer(1), sp.Integer(1)
+        unknown = False
+        for factor in sp.Mul.make_args(term):
+            base = factor.as_base_exp()[0]
+            syms = factor.free_symbols
+            if not syms or all(isinstance(x, sp.Dummy) for x in syms):
+                coef *= factor
+            elif all(isinstance(x, sp.Dummy) or kind(x) == "known" for x in syms):
+                coef *= factor
+            else:
+                inside *= factor
+                if not (isinstance(base, sp.Symbol) and kind(base) == "var"):
+                    unknown = True   # symbole hors modèle, ou fonction : reste sous ⟨⟩
+        coef = coef.xreplace(frozen)
+        if inside == 1:
+            total += coef
+            continue
+        if unknown:
+            body = sp.latex(inside, symbol_names=latex_names(inside))
+            ph = ctx.atom(r"\langle " + ctx.expand(body) + r" \rangle")
+        else:
+            ph = ctx.atom(moment_latex(inside, ctx))
+            ctx.moments[ph[8:-1]] = inside
+        total += coef * sp.Symbol(ph[8:-1])
+    names = latex_names(total)
+    return r"\left(" + sp.latex(total, symbol_names=names) + r"\right)"
 
 
 def _callable(ph: str, s: str, end: int, ctx: Context) -> str:
