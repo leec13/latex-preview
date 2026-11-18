@@ -284,6 +284,31 @@ def _callable(ph: str, s: str, end: int, ctx: Context) -> str:
     return ph
 
 
+def _check_complete(src: str, expr) -> None:
+    """Le parseur de SymPy peut s'arrêter en silence sur un élément qu'il ne connaît pas
+    et rendre le début de l'expression. On vérifie que chaque symbole du texte (symboles
+    opaques et lettres) se retrouve dans le résultat ; sinon, c'est une erreur."""
+    sp = _sympy()
+    from sympy.core.function import AppliedUndef
+
+    names = {a.name for a in expr.atoms(sp.Symbol)}
+    names |= {f.func.__name__ for f in expr.atoms(AppliedUndef)}
+    text = " ".join(names)
+    missing = []
+    for ph in re.findall(r"\\mathit\{(Zq[a-z]+)\}|F_\{(\d+)\}", src):
+        name = ph[0] or f"F_{{{ph[1]}}}"
+        if name not in text:
+            missing.append(name)
+    bare = re.sub(r"\\[A-Za-z]+|\\mathit\{Zq[a-z]+\}|F_\{\d+\}", " ", src)
+    for letter in set(re.findall(r"[A-Za-z]", bare)) - {"e", "d", "i"}:
+        if letter not in text:
+            missing.append(letter)
+    if missing:
+        raise SympyLatexError(
+            "SymPy n'a lu qu'une partie de l'expression : une écriture n'est pas comprise "
+            "(par exemple un délimiteur ou une commande inhabituels). Rien n'a été traduit.")
+
+
 def _top_level_equal(src: str) -> bool:
     depth = 0
     for k, c in enumerate(src):
@@ -455,7 +480,13 @@ def _protect(s: str, ctx: Context) -> str:
 
 _SPACING_RE = re.compile(r"(?<!\\)\\[,;:!> ]|\\q?quad(?![A-Za-z])|~")
 _SIZED_RE = re.compile(r"\\(?:big|Big|bigg|Bigg)[lrm]?(?![A-Za-z])")
-_SYMPY_CALL_RE = re.compile(r"(\\?[A-Za-z]+(?:_\{[^{}]*\}|_[A-Za-z0-9])?)\s*\{\s*\\left\(")
+# Nom de fonction à la manière de sympy.latex : N{\left(t \right)}, \lambda{\left(t \right)}.
+# Jamais une commande LaTeX : \frac{\left(a+b\right)}{K} n'est pas un appel de « frac ».
+_SYMPY_CALL_RE = re.compile(r"((?:(?<![\\A-Za-z])[A-Za-z]+|\\(?:" + "|".join(
+    ["alpha", "beta", "gamma", "delta", "epsilon", "varepsilon", "zeta", "eta", "theta", "vartheta",
+     "iota", "kappa", "lambda", "mu", "nu", "xi", "pi", "rho", "sigma", "tau", "upsilon", "phi",
+     "varphi", "chi", "psi", "omega", "Gamma", "Delta", "Theta", "Lambda", "Xi", "Pi", "Sigma",
+     "Phi", "Psi", "Omega"]) + r")(?![A-Za-z]))(?:_\{[^{}]*\}|_[A-Za-z0-9])?)\s*\{\s*\\left\(")
 
 
 def _sympy_style_calls(s: str, ctx: Context) -> str:
@@ -487,6 +518,11 @@ def preprocess(text: str, ctx: Context) -> str:
     s = s.replace(r"\dfrac", r"\frac").replace(r"\tfrac", r"\frac")
     s = re.sub(r"\\(approx|simeq)(?![A-Za-z])", "=", s)   # ≈ : égalité pour le calcul
     s = re.sub(r"\\left\s*\.|\\right\s*\.", " ", s)
+    # Le parseur ne connaît que \left( … \right) : avec [ ] { } | il s'arrête en silence
+    # (\right] lu comme les lettres r·i·g·h·t). On garde le délimiteur simple.
+    s = re.sub(r"\\(?:left|right)\s*(\[|\]|\\\{|\\\}|\|)", r"\1", s)
+    # Commandes de style (LyX les ajoute) : sans effet sur le calcul.
+    s = re.sub(r"\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)(?![A-Za-z])", " ", s)
     s = _SIZED_RE.sub("", s)
     s = _SPACING_RE.sub(" ", s)
     s = re.sub(r"[.,;]\s*$", "", s)                         # ponctuation finale
@@ -499,7 +535,25 @@ def preprocess(text: str, ctx: Context) -> str:
     s = _sympy_style_calls(s, ctx)
     s = _protect_brackets(s, ctx)
     s = _protect(s, ctx)
+    _check_commands(s)
     return s
+
+
+# Commandes que le parseur de SymPy comprend vraiment. Toute autre commande \xyz serait
+# lue en silence comme un symbole « xyz » (b \bmod c → b·bmod·c) : on refuse.
+_PARSER_COMMANDS = set("""
+frac dfrac tfrac binom sqrt int sum prod lim log ln exp sin cos tan sec csc cot arcsin arccos
+arctan arcsec arccsc arccot sinh cosh tanh arsinh arcosh artanh cdot times div infty partial to
+left right lfloor rfloor lceil rceil neq leq geq lt gt le ge ne mathit pm mp overline
+""".split()) | set(_GREEK[1:-1].split("|"))
+
+
+def _check_commands(src: str) -> None:
+    unknown = sorted({c for c in re.findall(r"\\([A-Za-z]+)", src) if c not in _PARSER_COMMANDS})
+    if unknown:
+        cmds = ", ".join("\\" + c for c in unknown)
+        raise SympyLatexError(f"Commande non comprise par SymPy : {cmds}. Rien n'a été traduit "
+                              "(remplacez-la, ou déclarez le symbole dans le modèle).")
 
 
 def _check_balance(s: str) -> None:
@@ -542,6 +596,7 @@ def parse(text: str, ctx: Context):
         first = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
         raise SympyLatexError(f"SymPy n'a pas compris l'expression : {first}") from exc
 
+    _check_complete(src, expr)
     # Le parseur peut s'arrêter en silence au milieu d'une expression : une
     # équation doit donner une égalité, sinon on le signale.
     if _top_level_equal(src) and not isinstance(expr, sp.Equality):

@@ -1,5 +1,14 @@
 # Historique des versions
 
+## v0.7.4 — 2026-11-18
+- Traduction : copier-coller depuis LyX. `\left[ … \right]` (et `\{ \}`, `| |`) faisait
+  s'arrêter le parseur en silence — traduction tronquée sans avertissement ; `\displaystyle`
+  était lu comme un mot. Les deux sont corrigés.
+- `\frac{\left(a+b\right)}{K}` n'est plus pris pour un appel de fonction « frac ».
+- Sécurité : tout symbole du texte doit se retrouver dans la traduction (sinon : erreur, rien
+  n'est traduit) ; une commande inconnue du parseur (`\bmod`, `\cdots`…) est refusée au lieu
+  d'être lue comme un symbole.
+
 ## v0.7.3 — 2026-11-13
 - **Correction d'une erreur de calcul** : `s(x_1 - \theta_A)^2` était traduit (s·(x−θ))²
   → `s**2*(…)**2` ; c'est maintenant `s*(-thA + x1)**2`. Idem dans un dénominateur
