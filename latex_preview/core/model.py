@@ -141,6 +141,15 @@ class Model:
         return set(self._latex_to_function)
 
     @property
+    def variable_latex_keys(self) -> set[str]:
+        return set(self._latex_to_var)
+
+    @property
+    def known_latex_keys(self) -> set[str]:
+        """Paramètres et fonctions déclarés : des constantes pour la moyenne ⟨…⟩."""
+        return set(self._latex_to_param) | set(self._latex_to_function)
+
+    @property
     def declared_latex(self) -> set[str]:
         """Toutes les écritures déclarées (variables, paramètres, fonctions), normalisées."""
         return set(self._latex_to_var) | set(self._latex_to_param) | set(self._latex_to_function)

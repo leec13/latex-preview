@@ -211,3 +211,34 @@ def test_jamais_de_lecture_partielle_ni_de_commande_devinee():
         assert not r["ok"] and r["python"] == "" and mot in r["error"], t
     r = L2P(r"a + \sideset{}{'}\sum b + g", MOD)
     assert not r["ok"] and r["python"] == ""
+
+
+# --- linéarité de la moyenne (validé le 18/11) -------------------------------
+def test_linearite_cas_valides():
+    cases = [
+        (r"\left\langle N^{1}_{A}N^{1}_{B}N^{1}_{B}+N^{1}_{A}N^{1}_{B}N^{2}_{B}\right\rangle",
+         "T_A1_B1_B1 + T_A1_B1_B2"),
+        (r"\left\langle \left(s(x^{1}-\theta_{A})^{2}+\frac{N^{1}_{A}+N^{2}_{A}}{K_{A}}\right)N^{1}_{A}\right\rangle",
+         "n_A1*s*(-thA + x1)**2 + (M_A1_A1 + M_A1_A2)/KA"),
+        (r"\left\langle N^{1}_{A}\left(N^{1}_{A}+1\right)\right\rangle", "M_A1_A1 + n_A1"),
+        (r"\left\langle m\,N^{1}_{A} \right\rangle", "m*n_A1"),     # paramètre du modèle : sort
+    ]
+    for tex, expected in cases:
+        r = ok(tex, MOD)
+        assert sp.simplify(sp.sympify(r["python"]) - sp.sympify(expected)) == 0, (tex, r["python"])
+        assert r["auto_names"] == []
+
+
+def test_linearite_symbole_hors_modele_reste_dans_la_moyenne():
+    """VALIDÉ : un symbole inconnu reste sous ⟨⟩, comme écrit (pas sorti comme une constante)."""
+    r = ok(r"\left\langle z\,N^{1}_{A} \right\rangle", MOD)
+    assert r["python"] == "E_N1Az" and r["auto_names"] == [r"\langle N^{1}_{A} z \rangle → E_N1Az"]
+    assert ok(r"\left\langle m\,z\,N^{1}_{A} \right\rangle", MOD)["python"] == "E_N1Az*m"
+
+
+def test_linearite_etape_de_calcul_de_l_utilisateur():
+    """Étape intermédiaire du 13/11 : ⟨D N⟩ − 2⟨D N²⟩ avec D = s(x−θ)² + N_tot/K."""
+    r = ok((HERE / "etape_vendredi.tex").read_text(), MOD)
+    exact = sp.sympify("rmaxA*(n_A1 + 2*M_A1_A1) + s*(x1-thA)**2*(n_A1 - 2*M_A1_A1)"
+                       " + (M_A1_A1 + M_A1_A2 - 2*T_A1_A1_A1 - 2*T_A1_A1_A2)/KA")
+    assert sp.simplify(rhs(r["python"]) - exact) == 0
