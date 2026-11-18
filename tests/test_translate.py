@@ -185,3 +185,29 @@ def test_exposant_seul_declare_comme_indice():
     assert ok(r"x^{2}", MOD)["python"] == "x2"
     assert ok(r"y^{2}", MOD)["python"] == "y**2"                       # non déclaré : puissance
     assert ok(r"x^{2}_{1}", MOD)["python"] == "x1**2"                  # pas coupé après x^{2}
+
+
+# --- copier-coller depuis LyX (18/11) : \left[ \right], {\displaystyle …} ----
+def test_copie_lyx_traduite_en_entier():
+    """Cas signalé : la traduction s'arrêtait en silence après « - NB1 »."""
+    r = ok((HERE / "exemple_lyx.tex").read_text(), MOD)
+    assert r["python"] == ("M_A1_B1*(rmaxA + rmaxB) - NA1*(omega1B + (NB1 + NB2)/KB) "
+                           "- NB1*(omega1A + (NA1 + NA2)/KA) + m*(M_A1_A1 - 2*M_A1_B1 + M_B1_B1 - NA1 - NB1)")
+
+
+def test_delimiteurs_et_styles():
+    assert ok(r"a - b\left[c + d\right]", MOD)["python"] == "a - b*(c + d)"
+    assert ok(r"a - b\left\{c + d\right\}", MOD)["python"] == "a - b*(c + d)"
+    assert ok(r"a + \left|y\right| + g", MOD)["python"] == "a + g + Abs(y)"
+    assert ok(r"a + {\displaystyle \frac{c}{f}} + g", MOD)["python"] == "a + c/f + g"
+    assert ok(r"\frac{\left(a+b\right)}{K}", MOD)["python"] == "(a + b)/K"       # pas un appel « frac »
+    assert ok(r"N{\left(t \right)} + C_{1}{\left(t \right)}", MOD)["python"] == "C1(t) + N(t)"
+
+
+def test_jamais_de_lecture_partielle_ni_de_commande_devinee():
+    for t, mot in [(r"a + b \bmod c + g", r"\bmod"), (r"a + b \cdots + g", r"\cdots"),
+                   (r"a + \overrightarrow{x} + g", r"\overrightarrow")]:
+        r = L2P(t, MOD)
+        assert not r["ok"] and r["python"] == "" and mot in r["error"], t
+    r = L2P(r"a + \sideset{}{'}\sum b + g", MOD)
+    assert not r["ok"] and r["python"] == ""

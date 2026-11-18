@@ -112,6 +112,8 @@ Chaque équation de l'éditeur est traduite en une ligne de code Python, en dire
 - **Puissance après une parenthèse** : `s(x - \theta)^2` est s·(x−θ)². La puissance ne porte que sur la parenthèse.
 - **L'ordre exposant/indice ne compte pas** : `N^{1}_{A}` et `N_{A}^{1}` désignent la même variable, et `\langle N^{1}_{A}N^{2}_{A}\rangle` donne `M_A1_A2`. Il n'y a pas de moments à déclarer : ils découlent des variables du modèle.
 - **Le modèle** est un fichier `.ini` lisible, qu'on modifie avec « Modifier le modèle… ». On peut l'enregistrer, le partager et en ouvrir un autre. Une variable peut avoir plusieurs écritures, séparées par `|` (`N_{A}^{x_1} | N_{A}^{1}`), et la première sert pour l'affichage.
+- **Copier-coller depuis LyX** : `\displaystyle` et les autres commandes de style sont ignorées. `\left[ … \right]`, `\left\{ … \right\}` et `\left| … \right|` sont compris.
+- **Jamais de traduction partielle ni devinée.** Si SymPy ne lit qu'une partie de l'expression, ou si elle contient une commande qu'il ne comprend pas (`\bmod`, `\cdots`…), rien n'est traduit, et le message nomme la commande en cause.
 - **Rien n'est traduit tant que le LaTeX ne compile pas.** Le panneau affiche alors « Le LaTeX ne compile pas : corrigez d'abord l'erreur ». La traduction suit chaque compilation réussie de l'aperçu.
 
 ## Dépannage
